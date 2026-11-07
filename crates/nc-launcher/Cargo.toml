@@ -1,0 +1,40 @@
+[package]
+name = "nc-launcher"
+description = "Night Client launcher services: downloads, installation, Java runtimes, Microsoft authentication and game processes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nc-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+futures.workspace = true
+reqwest.workspace = true
+sha1.workspace = true
+sha2 = "0.11.1"
+hex.workspace = true
+zip.workspace = true
+url.workspace = true
+base64.workspace = true
+getrandom.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util", "signal"] }
+tracing-subscriber.workspace = true
+sha1.workspace = true
+hex.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+nc-core.workspace = true
+
+[lints]
+workspace = true
