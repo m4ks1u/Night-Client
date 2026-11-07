@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/nc-core", "crates/nc-launcher", "apps/desktop/src-tauri"]
+members = ["crates/nc-core", "crates/nc-launcher", "crates/nc-store", "apps/desktop/src-tauri"]
 
 [workspace.package]
 version = "0.0.1"
@@ -12,11 +12,12 @@ publish = false
 [workspace.dependencies]
 nc-core = { path = "crates/nc-core" }
 nc-launcher = { path = "crates/nc-launcher" }
+nc-store = { path = "crates/nc-store" }
 
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 thiserror = "2.0.21"
-regex = { version = "1.13.1", default-features = false, features = ["std", "unicode-perl"] }
+regex = { version = "1.13.1", default-features = false, features = ["std", "unicode-perl", "perf"] }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "fs", "io-util", "process", "sync", "time", "net"] }
 tokio-util = "0.7.20"
 futures = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
@@ -32,6 +33,9 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 wiremock = "0.6.5"
 tempfile = "3.27.0"
+rusqlite = { version = "0.41.1", features = ["bundled"] }
+uuid = { version = "1.29.1", features = ["v4"] }
+tracing-appender = "0.2.5"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
