@@ -6,6 +6,15 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 1 (application foundation)
+- `nc-store`: SQLite (WAL) with transactional, versioned migrations, automatic pre-migration backup, and newer-schema protection.
+- Instances: create, rename, per-instance memory, open folder, verify files, delete to a recoverable trash folder; play time and last-played tracking.
+- App shell with sidebar navigation: Home, Instances, New instance, Instance details (overview, game log), Account, Settings, Diagnostics.
+- Settings: default memory, parallel downloads, hide while playing.
+- Rotating, non-blocking, redacted file logs in `%LOCALAPPDATA%\NightClient\logs`, with a log viewer in Diagnostics.
+- RAM-aware memory recommendations and limits.
+- Tauri app permission manifest: each IPC command needs an explicit permission.
+
 ### Added — Stage 0 (technical proof of concept)
 - Rust workspace with `nc-core` (pure metadata and launch-argument model) and `nc-launcher` (services).
 - Parsing of Mojang version manifests and version JSON, platform rules, legacy natives, `inheritsFrom` merging (Fabric profile verified).

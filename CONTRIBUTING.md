@@ -29,7 +29,8 @@ larger changes before you start.
 ## Code layout
 
 - `nc-core` stays free of I/O. If you need the network or disk, the code belongs in `nc-launcher`.
-- `src-tauri` stays thin: validate input, call a service, map errors.
+- `src-tauri` stays thin: validate input, call a service, map errors. New commands must be added to `build.rs` (permission manifest), `capabilities/main.json`, `lib.rs` and `src/lib/ipc.ts`.
+- Schema changes are new files in `crates/nc-store/migrations/`. Never edit a shipped migration.
 - UI code uses the design tokens in `apps/desktop/src/styles/app.css`. Don't hard-code colours.
 
 ## Tests

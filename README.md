@@ -2,8 +2,8 @@
 
 A fast, secure, open-source launcher for **Minecraft: Java Edition** on Windows 10/11 (x64).
 
-> **Status: Stage 0 — technical proof of concept.** Not ready for players yet.
-> See [docs/stage-0-report.md](docs/stage-0-report.md) for what works today.
+> **Status: Stage 1, application foundation.** Not ready for players yet.
+> See [docs/stage-1-report.md](docs/stage-1-report.md) for what works today.
 
 Night Client is **not affiliated with, endorsed by or associated with Mojang Studios or Microsoft**.
 "Minecraft" is a trademark of Mojang Synergies AB. You need a Microsoft account that owns
@@ -24,7 +24,8 @@ downloaded from official Mojang servers and verified against Mojang's published 
 | Path | What lives there |
 |---|---|
 | `crates/nc-core` | Pure Minecraft metadata model: manifests, rules, libraries, launch arguments. No I/O. |
-| `crates/nc-launcher` | Services: download engine, installer, Java runtimes, Microsoft auth, game process. |
+| `crates/nc-launcher` | Services: download engine, installer, Java runtimes, Microsoft auth, game process, logging. |
+| `crates/nc-store` | SQLite database with versioned migrations: instances and settings (never secrets). |
 | `apps/desktop/src-tauri` | Thin Tauri layer: IPC commands, events, capabilities. |
 | `apps/desktop/src` | React + TypeScript UI. |
 | `docs/` | Architecture, setup, spikes, benchmarks, stage reports. |

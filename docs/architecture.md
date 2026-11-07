@@ -67,9 +67,51 @@ libraries with the same `group:artifact[:classifier]`.
   [spikes/neoforge.md](spikes/neoforge.md).
 - **Forge and Quilt:** same shapes as NeoForge and Fabric respectively. Not implemented yet.
 
+## Local database (`nc-store`)
+
+- `<data>\night-client.db`, SQLite (bundled), WAL, `foreign_keys=ON`, 5 s busy timeout.
+- Migrations live in `crates/nc-store/migrations/NNNN_name.sql` and are registered in `migrations.rs`.
+  They are forward-only, run one transaction per migration together with the `user_version` bump, and
+  versions must be contiguous.
+- Before an existing database is migrated it is copied with `VACUUM INTO` to `night-client.db.v<N>.bak`.
+- A schema newer than the build is refused (`NewerSchema`) and the file is left untouched. The app still
+  starts, shows a banner, and keeps Diagnostics available.
+- `STRICT` tables with `CHECK` constraints mirror the Rust validation.
+- Settings are one JSON document per key, using `#[serde(default)]`, so new settings need no migration.
+  A corrupt value falls back to defaults.
+- **Never** stores tokens. Account metadata arrives in Stage 3. The refresh token goes to DPAPI, not SQLite.
+
+## Logging
+
+`nc_launcher::logging::init` sets up a daily rotating file in `%LOCALAPPDATA%\NightClient\logs`
+(7 files), a non-blocking writer, and a regex redaction pass on every line. Debug builds also log to
+stderr. `Secret` remains the primary defence. The regexes are a safety net and have tests for both
+leaks and false positives.
+
+## IPC permissions
+
+`apps/desktop/src-tauri/build.rs` declares every command in an `AppManifest`. Tauri then requires an
+`allow-<command>` permission per command, and `capabilities/main.json` grants them to the `main` window
+only. **Adding a command means adding it to `build.rs`, the capability, `lib.rs` and `src/lib/ipc.ts`.**
+
+## Frontend
+
+```
+src/
+  App.tsx            shell: title bar, sidebar, animated route outlet, global event subscriptions
+  stores/app.ts      Zustand: app info, settings, account, instances, versions, install, running games, logs
+  stores/router.ts   in-memory router with history (Alt+← and mouse back button)
+  lib/ipc.ts         the only file that names commands/events
+  lib/actions.ts     cross-screen flows (install-if-needed → launch)
+  components/        Button, ui primitives (Card, Dialog, Toggle, MemorySlider, states…), Sidebar, PlayButton, LogView
+  screens/           Home, Instances, NewInstance, InstanceDetail, Accounts, Settings, Diagnostics
+```
+
+Screens for features that don't exist yet (Downloads, mods) are not shown, so there are no placeholder
+controls.
+
 ## Planned additions
 
-- `nc-store`: SQLite with versioned migrations (Stage 1).
 - DPAPI token vault in `src-tauri` (Stage 3).
 - Modrinth client and resolver (Stage 5).
 - Updater with signed artifacts (Stage 8).
