@@ -1,3 +1,39 @@
+// Declaring the app's commands makes Tauri require an explicit
+// `allow-<command>` permission for each one, instead of exposing every
+// command to every window by default.
+const COMMANDS: &[&str] = &[
+    "ui_ready",
+    "app_info",
+    "system_info",
+    "get_settings",
+    "update_settings",
+    "diagnostics",
+    "recent_logs",
+    "open_data_dir",
+    "open_logs_dir",
+    "list_versions",
+    "install_version",
+    "cancel_install",
+    "current_install",
+    "list_instances",
+    "get_instance",
+    "create_instance",
+    "update_instance",
+    "delete_instance",
+    "open_instance_dir",
+    "account",
+    "sign_in",
+    "cancel_sign_in",
+    "sign_out",
+    "running_instances",
+    "launch_instance",
+    "stop_instance",
+];
+
 fn main() {
-    tauri_build::build();
+    tauri_build::try_build(
+        tauri_build::Attributes::new()
+            .app_manifest(tauri_build::AppManifest::new().commands(COMMANDS)),
+    )
+    .expect("failed to run tauri-build");
 }
