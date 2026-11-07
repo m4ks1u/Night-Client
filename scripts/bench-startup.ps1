@@ -24,18 +24,17 @@ function Get-Tree([int]$rootId) {
 
 $results = @()
 for ($r = 1; $r -le $Runs; $r++) {
-  $log = Join-Path $env:TEMP "nc-bench-$r.log"
-  Remove-Item $log -ErrorAction SilentlyContinue
-  $env:RUST_LOG = "warn,bench=info"
-  $p = Start-Process -FilePath $exePath -PassThru -RedirectStandardError $log
+  # Release builds log only to the rotating file in %LOCALAPPDATA%\NightClient\logs.
+  $logDir = Join-Path $env:LOCALAPPDATA "NightClient\logs"
+  $find = { @(Get-ChildItem $logDir -Filter "night-client*.log" -ErrorAction SilentlyContinue | Select-String -Pattern "ui_ready_ms=(\d+)") }
+  $before = (& $find).Count
+  $p = Start-Process -FilePath $exePath -PassThru
   $ready = $null
   $deadline = (Get-Date).AddSeconds(30)
   while (-not $ready -and (Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 100
-    if (Test-Path $log) {
-      $m = Select-String -Path $log -Pattern "ui_ready_ms=(\d+)" | Select-Object -First 1
-      if ($m) { $ready = [int]$m.Matches[0].Groups[1].Value }
-    }
+    $m = & $find
+    if ($m.Count -gt $before) { $ready = [int]$m[-1].Matches[0].Groups[1].Value }
   }
   Start-Sleep -Seconds $IdleSeconds
   $tree = Get-Tree $p.Id

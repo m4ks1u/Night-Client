@@ -116,7 +116,7 @@ Nine crates may look like a lot. I'm proposing the split because it keeps compil
 5. Launch: offline/cracked launch is excluded by the brief, and every launch (including demo mode) needs a real Minecraft access token. So the game reaches the title screen **only once R1 is approved**. Until then, the launch path is verified by argument and classpath construction tests plus a process-lifecycle test against a dummy Java program. → *Open question for you, see §10.*
 6. Auth spike (CLI binary in `nc-auth/examples`): loopback PKCE → MSA → XBL → XSTS → MC → entitlement → profile, redacted logs.
 7. NeoForge spike: install one NeoForge version both ways (R3), write up the findings.
-8. Measurements: cold start to first paint, idle RSS (process tree incl. WebView2), idle CPU, recorded in `docs/benchmarks/stage-0.md`.
+8. Measurements: cold start to first paint, idle RSS (process tree incl. WebView2), idle CPU, recorded in `docs/benchmarks/README.md`.
 
 **Acceptance criteria (testable):**
 - [ ] `cargo test --workspace` and `pnpm test` pass in CI on `windows-latest`.

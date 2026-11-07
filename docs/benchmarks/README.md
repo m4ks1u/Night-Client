@@ -1,4 +1,4 @@
-# Stage 0 benchmarks
+# Benchmarks
 
 Measured on 2026-11-08. Numbers are from single runs on one machine. They are a baseline, not a guarantee.
 
@@ -58,3 +58,21 @@ request. A regression test was added (`complete_part_file_is_verified_without_a_
 | CSS | 15.5 KB | 4.3 KB |
 | Fonts (2 × variable woff2) | 141 KB | — |
 | `night-client.exe` (release, stripped) | 15.5 MB | — |
+
+---
+
+## Stage 1 re-run (2026-11-08, same PC, release build)
+
+`ui_ready` is now read from the rotating log file, because release builds no longer write to stderr.
+
+| Run | UI ready | Private MB | Working set MB | Idle CPU |
+|---|---|---|---|---|
+| 1 | 306 ms | 177.5 | 345.7 | 0 % |
+| 2 | 291 ms | 176.9 | 348.1 | 0 % |
+| 3 | 298 ms | 175.9 | 345.9 | 0 % |
+| 4 | 303 ms | 177.6 | 348.7 | 0.12 % |
+| 5 | 298 ms | 178.4 | 346.3 | 0 % |
+
+Startup improved from about 450 ms. This is probably because logs now go through a non-blocking file
+writer instead of a redirected stderr pipe, but the cause hasn't been isolated. Memory is unchanged and
+still misses the 150 MB target. Bundle: JS 385 KB (122 KB gzip), CSS 23.5 KB (5.7 KB gzip).

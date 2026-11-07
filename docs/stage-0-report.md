@@ -23,7 +23,7 @@ The risky parts of the launcher are proven on real infrastructure:
 | Criterion | Status | Evidence |
 |---|---|---|
 | `cargo test --workspace` and `pnpm test` pass **in CI on windows-latest** | ⚠️ Pass **locally**. The CI workflow is written but has not run (no remote). | 66 Rust + 10 frontend tests, `clippy -D warnings` clean |
-| Fresh install of the latest release completes and every file is hash-verified. A second run downloads 0 bytes. | ✅ | benchmarks/stage-0.md |
+| Fresh install of the latest release completes and every file is hash-verified. A second run downloads 0 bytes. | ✅ | benchmarks/README.md |
 | Killing the app mid-download and restarting resumes without corruption | ✅ | 3 SIGKILLs at 3–5 s, then resume: 0 `.part` files left, `verify` OK |
 | Cancel stops all network activity within 1 s | ✅ (engine) | `cancel_stops_within_one_second` test. The UI Cancel button was not exercised by automation. |
 | UI responsive during install (< 100 ms, no long tasks > 50 ms) | ✅ | 0 long tasks, frame latency < 1 ms |
@@ -67,7 +67,7 @@ apps/desktop/          index.html, vite.config.ts, tsconfig.json, package.json, 
                        src/{main,lib,state,commands}.rs
 scripts/bench-startup.ps1
 .github/               workflows/ci.yml, ISSUE_TEMPLATE/*, dependabot.yml
-docs/                  architecture.md, dev-setup.md, stage-0-report.md, benchmarks/stage-0.md,
+docs/                  architecture.md, dev-setup.md, stage-0-report.md, benchmarks/README.md,
                        spikes/{auth,neoforge}.md, proposal/00-architecture-and-stage-0.md
 README.md  CONTRIBUTING.md  SECURITY.md  CHANGELOG.md  LICENSE (Apache-2.0)  NOTICE
 ```
