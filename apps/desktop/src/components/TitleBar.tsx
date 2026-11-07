@@ -25,7 +25,7 @@ export function TitleBar() {
       <div data-tauri-drag-region className="flex items-center gap-2 text-[13px] font-medium tracking-tight text-fg">
         <Logo />
         Night Client
-        <span className="rounded-sm border border-line px-1.5 text-2xs font-medium text-fg-faint">Stage 0</span>
+        <span className="rounded-sm border border-line px-1.5 text-2xs font-medium text-fg-faint">Preview</span>
       </div>
       <div className="flex h-full">
         <button className={ctl} aria-label="Minimize" onClick={() => void win.minimize()}>
