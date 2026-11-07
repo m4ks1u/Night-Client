@@ -1,0 +1,27 @@
+name: Bug report
+description: Something in Night Client does not work as expected.
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please **remove any access tokens** from logs before you paste them. Night Client redacts them, but check anyway.
+        Security problems go through private reporting (see SECURITY.md), not here.
+  - type: input
+    id: version
+    attributes: { label: Night Client version, placeholder: "0.0.1" }
+    validations: { required: true }
+  - type: input
+    id: windows
+    attributes: { label: Windows version, placeholder: "Windows 11 24H2" }
+    validations: { required: true }
+  - type: input
+    id: minecraft
+    attributes: { label: Minecraft version and loader, placeholder: "1.21.1 Fabric 0.20.1" }
+  - type: textarea
+    id: what
+    attributes: { label: What happened?, description: Steps to reproduce, expected and actual behaviour. }
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes: { label: Logs, render: text }
