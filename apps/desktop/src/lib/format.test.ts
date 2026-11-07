@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatMemory, fraction } from "./format";
+import { defaultInstanceName, formatBytes, formatDuration, formatMemory, formatRelative, fraction } from "./format";
 import { toCmdError } from "./ipc";
 
 describe("formatBytes", () => {
@@ -28,6 +28,24 @@ describe("formatMemory", () => {
   it("shows GB", () => {
     expect(formatMemory(4096)).toBe("4 GB");
     expect(formatMemory(1536)).toBe("1.5 GB");
+  });
+});
+
+describe("formatDuration / formatRelative", () => {
+  it("formats play time", () => {
+    expect(formatDuration(30)).toBe("< 1m");
+    expect(formatDuration(12 * 60)).toBe("12m");
+    expect(formatDuration(2 * 3600 + 5 * 60)).toBe("2h 05m");
+  });
+  it("formats relative times", () => {
+    const now = 1_700_000_000;
+    expect(formatRelative(null, now)).toBe("Never");
+    expect(formatRelative(now - 10, now)).toBe("Just now");
+    expect(formatRelative(now - 300, now)).toBe("5 minutes ago");
+    expect(formatRelative(now - 86400, now)).toBe("yesterday");
+  });
+  it("names instances after their version", () => {
+    expect(defaultInstanceName("1.21.1")).toBe("Minecraft 1.21.1");
   });
 });
 

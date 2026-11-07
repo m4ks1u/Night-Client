@@ -1,16 +1,34 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ProgressBar } from "./ProgressBar";
 import { Button } from "./Button";
-import { MAX_LOG_LINES, useLauncher } from "../stores/launcher";
+import { EmptyState, MemorySlider, Toggle } from "./ui";
+import { MAX_LOG_LINES, effectiveMemory, useApp } from "../stores/app";
+import { sectionOf, useRouter } from "../stores/router";
+import type { Instance } from "../lib/ipc";
 
 afterEach(cleanup);
+
+const inst = (over: Partial<Instance> = {}): Instance => ({
+  id: "3f2b8c1e-0000-4000-8000-123456789abc",
+  name: "World",
+  dirName: "World",
+  gameVersion: "1.21.1",
+  loader: "vanilla",
+  loaderVersion: null,
+  maxMemoryMb: null,
+  createdAt: 0,
+  lastPlayedAt: null,
+  playTimeSeconds: 0,
+  installed: true,
+  running: false,
+  ...over,
+});
 
 describe("ProgressBar", () => {
   it("exposes an accessible value", () => {
     render(<ProgressBar value={0.426} label="Install" />);
-    const bar = screen.getByRole("progressbar", { name: "Install" });
-    expect(bar.getAttribute("aria-valuenow")).toBe("43");
+    expect(screen.getByRole("progressbar", { name: "Install" }).getAttribute("aria-valuenow")).toBe("43");
   });
   it("is indeterminate without a value", () => {
     render(<ProgressBar value={null} label="Install" />);
@@ -25,21 +43,93 @@ describe("Button", () => {
   });
 });
 
-describe("launcher store", () => {
-  it("caps retained log lines", () => {
+describe("Toggle", () => {
+  it("is a labelled switch that flips on click", () => {
+    const onChange = vi.fn();
+    render(<Toggle id="t" checked={false} onChange={onChange} label="Hide while playing" />);
+    const sw = screen.getByRole("switch", { name: "Hide while playing" });
+    expect(sw.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(sw);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+});
+
+describe("MemorySlider", () => {
+  it("shows the recommendation and warns when far above it", () => {
+    const { rerender } = render(<MemorySlider value={4096} onChange={() => {}} max={14336} recommended={4096} />);
+    expect(screen.getByText("Recommended for this PC: 4 GB")).toBeTruthy();
+    rerender(<MemorySlider value={12288} onChange={() => {}} max={14336} recommended={4096} />);
+    expect(screen.getByText(/garbage-collection pauses/)).toBeTruthy();
+  });
+  it("never offers more than the host maximum", () => {
+    render(<MemorySlider value={4096} onChange={() => {}} max={6144} />);
+    expect(screen.getByRole("slider").getAttribute("max")).toBe("6144");
+  });
+});
+
+describe("EmptyState", () => {
+  it("renders its call to action", () => {
+    render(<EmptyState icon={null} title="No instances yet" body="b" action={<Button>New instance</Button>} />);
+    expect(screen.getByRole("heading", { name: "No instances yet" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New instance" })).toBeTruthy();
+  });
+});
+
+describe("app store", () => {
+  beforeEach(() => useApp.setState({ logs: {}, running: {}, install: null, instances: { status: "ready", data: [] } }));
+
+  it("caps retained log lines per instance", () => {
     const batch = Array.from({ length: MAX_LOG_LINES + 50 }, (_, i) => ({ stream: "stdout" as const, level: null, text: `l${i}` }));
-    useLauncher.getState().appendLogs(batch);
-    const logs = useLauncher.getState().logs;
-    expect(logs).toHaveLength(MAX_LOG_LINES);
-    expect(logs.at(-1)?.text).toBe(`l${MAX_LOG_LINES + 49}`);
+    useApp.getState().appendLogs("a", batch);
+    useApp.getState().appendLogs("b", batch.slice(0, 3));
+    expect(useApp.getState().logs.a).toHaveLength(MAX_LOG_LINES);
+    expect(useApp.getState().logs.a?.at(-1)?.text).toBe(`l${MAX_LOG_LINES + 49}`);
+    expect(useApp.getState().logs.b).toHaveLength(3);
   });
 
-  it("ignores progress for a different version and treats cancel as idle", () => {
-    const s = useLauncher.getState();
-    s.startInstall("26.3");
-    s.setProgress({ id: "1.8.9", phase: "gameFiles", totalFiles: 1, doneFiles: 1, skippedFiles: 0, totalBytes: 1, doneBytes: 1 });
-    expect(useLauncher.getState().install).toEqual({ status: "running", versionId: "26.3", progress: null });
-    s.failInstall("26.3", { code: "cancelled", message: "" });
-    expect(useLauncher.getState().install.status).toBe("idle");
+  it("only applies progress for the version being installed", () => {
+    useApp.setState({ install: { versionId: "26.3", progress: null } });
+    useApp.getState().setProgress({ id: "1.8.9", phase: "gameFiles", totalFiles: 1, doneFiles: 1, skippedFiles: 0, totalBytes: 1, doneBytes: 1 });
+    expect(useApp.getState().install?.progress).toBeNull();
+    useApp.getState().setProgress({ id: "26.3", phase: "runtime", totalFiles: 2, doneFiles: 1, skippedFiles: 0, totalBytes: 10, doneBytes: 5 });
+    expect(useApp.getState().install?.progress?.phase).toBe("runtime");
+  });
+
+  it("upserts and removes instances", () => {
+    useApp.getState().upsertInstance(inst());
+    useApp.getState().upsertInstance(inst({ name: "Renamed" }));
+    const s = useApp.getState().instances;
+    expect(s.status === "ready" && s.data.map((i) => i.name)).toEqual(["Renamed"]);
+    useApp.getState().removeInstance(inst().id);
+    const after = useApp.getState().instances;
+    expect(after.status === "ready" && after.data).toEqual([]);
+  });
+
+  it("tracks running games", () => {
+    useApp.getState().markStarted("x");
+    expect("x" in useApp.getState().running).toBe(true);
+    useApp.getState().markExited("x");
+    expect("x" in useApp.getState().running).toBe(false);
+  });
+
+  it("uses the instance override or the launcher default for memory", () => {
+    const s = { defaultMaxMemoryMb: 6144, downloadConcurrency: 8, hideOnLaunch: false };
+    expect(effectiveMemory(inst(), s)).toBe(6144);
+    expect(effectiveMemory(inst({ maxMemoryMb: 2048 }), s)).toBe(2048);
+    expect(effectiveMemory(inst(), null)).toBe(4096);
+  });
+});
+
+describe("router", () => {
+  it("navigates, goes back, and maps sections", () => {
+    useRouter.setState({ route: { name: "home" }, history: [] });
+    useRouter.getState().navigate({ name: "instances" });
+    useRouter.getState().navigate({ name: "instance", id: "x" });
+    expect(sectionOf(useRouter.getState().route)).toBe("instances");
+    useRouter.getState().back();
+    expect(useRouter.getState().route).toEqual({ name: "instances" });
+    useRouter.getState().back();
+    useRouter.getState().back(); // no-op at the start of history
+    expect(useRouter.getState().route).toEqual({ name: "home" });
   });
 });

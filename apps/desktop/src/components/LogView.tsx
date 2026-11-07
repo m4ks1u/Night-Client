@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useLauncher } from "../stores/launcher";
+import type { LogLine } from "../lib/ipc";
 
 const levelColor: Record<string, string> = {
   WARN: "text-warning",
@@ -8,22 +8,21 @@ const levelColor: Record<string, string> = {
   DEBUG: "text-fg-faint",
 };
 
-export function LogView() {
-  const logs = useLauncher((s) => s.logs);
+export function LogView({ lines, empty, label }: { lines: LogLine[] | string[]; empty: string; label: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
   useEffect(() => {
     const el = ref.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [logs]);
+  }, [lines]);
 
   return (
     <div
       ref={ref}
       role="log"
       aria-live="off"
-      aria-label="Game output"
+      aria-label={label}
       tabIndex={0}
       onScroll={(e) => {
         const el = e.currentTarget;
@@ -31,14 +30,20 @@ export function LogView() {
       }}
       className="h-full overflow-auto px-4 py-3 font-mono text-[12px] leading-[1.55] select-text"
     >
-      {logs.length === 0 ? (
-        <p className="text-fg-faint">Game output appears here after launch.</p>
+      {lines.length === 0 ? (
+        <p className="text-fg-faint">{empty}</p>
       ) : (
-        logs.map((l, i) => (
-          <div key={i} className={`whitespace-pre-wrap break-all ${levelColor[l.level ?? ""] ?? (l.stream === "stderr" ? "text-warning/90" : "text-fg-muted")}`}>
-            {l.text}
-          </div>
-        ))
+        lines.map((l, i) =>
+          typeof l === "string" ? (
+            <div key={i} className={`whitespace-pre-wrap break-all ${/\bERROR\b/.test(l) ? "text-danger" : /\bWARN\b/.test(l) ? "text-warning" : "text-fg-muted"}`}>
+              {l}
+            </div>
+          ) : (
+            <div key={i} className={`whitespace-pre-wrap break-all ${levelColor[l.level ?? ""] ?? (l.stream === "stderr" ? "text-warning/90" : "text-fg-muted")}`}>
+              {l.text}
+            </div>
+          ),
+        )
       )}
     </div>
   );

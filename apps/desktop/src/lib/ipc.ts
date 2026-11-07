@@ -1,5 +1,5 @@
-// Typed bridge to the Rust commands in src-tauri/src/commands.rs.
-// Keep this file the only place that names IPC commands and events.
+// Typed bridge to the Rust commands in src-tauri/src/commands/.
+// This file is the only place that names IPC commands and events.
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -13,11 +13,59 @@ export function toCmdError(e: unknown): CmdError {
   return { code: "unknown", message: e instanceof Error ? e.message : String(e) };
 }
 
-export type AppInfo = { version: string; dataDir: string; signInConfigured: boolean };
-export type VersionItem = { id: string; kind: string; releaseTime: string; installed: boolean };
-export type VersionList = { latestRelease: string; versions: VersionItem[]; fromCache: boolean };
+export type AppInfo = {
+  version: string;
+  dataDir: string;
+  logDir: string;
+  signInConfigured: boolean;
+  startupError: string | null;
+};
+export type SystemInfo = {
+  totalMemoryMb: number;
+  availableMemoryMb: number;
+  osVersion: string;
+  cpuThreads: number;
+  recommendedMemoryMb: number;
+  maxMemoryMb: number;
+};
+export type Settings = { defaultMaxMemoryMb: number; downloadConcurrency: number; hideOnLaunch: boolean };
+export type VersionItem = { id: string; kind: "release" | "snapshot" | string; releaseTime: string; installed: boolean };
+export type VersionList = { latestRelease: string; latestSnapshot: string; versions: VersionItem[]; fromCache: boolean };
 export type InstallResult = { downloadedFiles: number; skippedFiles: number; downloadedBytes: number };
-export type Account = { name: string; uuid: string };
+export type Account = { name: string; uuid: string; expiresAt: number };
+
+export type Instance = {
+  id: string;
+  name: string;
+  dirName: string;
+  gameVersion: string;
+  loader: "vanilla" | "fabric" | "neoforge";
+  loaderVersion: string | null;
+  maxMemoryMb: number | null;
+  createdAt: number;
+  lastPlayedAt: number | null;
+  playTimeSeconds: number;
+  installed: boolean;
+  running: boolean;
+};
+export type Running = { instanceId: string; startedAt: number };
+
+export type Diagnostics = {
+  appVersion: string;
+  os: string;
+  totalMemoryMb: number;
+  cpuThreads: number;
+  dataDir: string;
+  logDir: string;
+  logFile: string | null;
+  database: string | null;
+  schemaVersion: number | null;
+  startupError: string | null;
+  instanceCount: number | null;
+  installedVersions: string[];
+  runtimes: { component: string; version: string }[];
+  signInConfigured: boolean;
+};
 
 export type InstallPhase = "metadata" | "runtime" | "gameFiles";
 export type InstallProgress = {
@@ -29,28 +77,54 @@ export type InstallProgress = {
   totalBytes: number;
   doneBytes: number;
 };
+export type InstallFinished = { id: string; ok: boolean; error: string | null };
 export type LogLine = { stream: "stdout" | "stderr"; level: string | null; text: string };
-export type GameExit = { version: string; code: number | null };
+export type LogBatch = { instanceId: string; lines: LogLine[] };
+export type GameExit = { instanceId: string; code: number | null; seconds: number };
 
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
-  listVersions: () => invoke<VersionList>("list_versions"),
+  systemInfo: () => invoke<SystemInfo>("system_info"),
+  getSettings: () => invoke<Settings>("get_settings"),
+  updateSettings: (settings: Settings) => invoke<Settings>("update_settings", { settings }),
+  diagnostics: () => invoke<Diagnostics>("diagnostics"),
+  recentLogs: (lines: number) => invoke<string[]>("recent_logs", { lines }),
+  openDataDir: () => invoke<void>("open_data_dir"),
+  openLogsDir: () => invoke<void>("open_logs_dir"),
+
+  listVersions: (includeSnapshots: boolean) => invoke<VersionList>("list_versions", { includeSnapshots }),
   installVersion: (id: string) => invoke<InstallResult>("install_version", { id }),
   cancelInstall: () => invoke<void>("cancel_install"),
+  currentInstall: () => invoke<string | null>("current_install"),
+
+  listInstances: () => invoke<Instance[]>("list_instances"),
+  getInstance: (id: string) => invoke<Instance>("get_instance", { id }),
+  createInstance: (input: { name: string; gameVersion: string; maxMemoryMb: number | null }) =>
+    invoke<Instance>("create_instance", { input }),
+  updateInstance: (id: string, patch: { name?: string; maxMemoryMb?: number | null }) =>
+    invoke<Instance>("update_instance", { id, patch }),
+  deleteInstance: (id: string) => invoke<{ trashPath: string | null }>("delete_instance", { id }),
+  openInstanceDir: (id: string) => invoke<void>("open_instance_dir", { id }),
+
   account: () => invoke<Account | null>("account"),
   signIn: () => invoke<Account>("sign_in"),
   cancelSignIn: () => invoke<void>("cancel_sign_in"),
   signOut: () => invoke<void>("sign_out"),
-  launchGame: (id: string, maxMemoryMb: number) => invoke<void>("launch_game", { id, maxMemoryMb }),
-  stopGame: () => invoke<void>("stop_game"),
-  openDataDir: () => invoke<void>("open_data_dir"),
+
+  runningInstances: () => invoke<Running[]>("running_instances"),
+  launchInstance: (id: string) => invoke<void>("launch_instance", { id }),
+  stopInstance: (id: string) => invoke<void>("stop_instance", { id }),
 };
 
+const on =
+  <T,>(name: string) =>
+  (cb: (payload: T) => void): Promise<UnlistenFn> =>
+    listen<T>(name, (e) => cb(e.payload));
+
 export const events = {
-  onInstallProgress: (cb: (p: InstallProgress) => void): Promise<UnlistenFn> =>
-    listen<InstallProgress>("install://progress", (e) => cb(e.payload)),
-  onGameLog: (cb: (lines: LogLine[]) => void): Promise<UnlistenFn> =>
-    listen<LogLine[]>("game://log", (e) => cb(e.payload)),
-  onGameExit: (cb: (e: GameExit) => void): Promise<UnlistenFn> =>
-    listen<GameExit>("game://exit", (e) => cb(e.payload)),
+  installProgress: on<InstallProgress>("install://progress"),
+  installFinished: on<InstallFinished>("install://finished"),
+  gameStarted: on<string>("game://started"),
+  gameLog: on<LogBatch>("game://log"),
+  gameExit: on<GameExit>("game://exit"),
 };
