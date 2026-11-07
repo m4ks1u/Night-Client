@@ -1,0 +1,16 @@
+Night Client
+Copyright Night Client contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Night Client is an independent project. It is NOT an official Minecraft product
+and is not approved by or associated with Mojang Studios or Microsoft.
+"Minecraft" and "Mojang" are trademarks of Mojang Synergies AB; "Microsoft" and
+"Xbox" are trademarks of Microsoft Corporation. Night Client distributes no
+Minecraft game files; they are downloaded from official servers at runtime.
+
+Third-party components:
+- Geist and Geist Mono fonts, Copyright (c) 2023 Vercel, in collaboration with
+  basement.studio, licensed under the SIL Open Font License 1.1
+  (apps/desktop/src/assets/fonts/OFL-Geist.txt).
+- Lucide icons, ISC License.
