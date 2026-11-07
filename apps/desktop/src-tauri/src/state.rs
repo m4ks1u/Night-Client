@@ -1,4 +1,8 @@
-use std::sync::Mutex;
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Mutex, RwLock},
+};
 
 use nc_launcher::{
     CancellationToken,
@@ -7,36 +11,82 @@ use nc_launcher::{
     layout::Layout,
     meta::Meta,
 };
+use nc_store::{AppSettings, Store};
 
 pub struct AppState {
-    pub meta: Meta,
+    pub layout: Layout,
+    pub log_dir: PathBuf,
+    /// `None` when the database could not be opened (e.g. created by a newer
+    /// version); the UI then shows `startup_error` instead of crashing.
+    pub store: Option<Arc<Store>>,
+    pub startup_error: Option<String>,
+    /// Rebuilt when download settings change; installs clone it at start.
+    meta: RwLock<Meta>,
     pub auth: Option<Client>,
-    /// In-memory only for Stage 0. Stage 3 persists the refresh token with DPAPI.
+    /// In memory only until the DPAPI vault lands in Stage 3.
     pub session: Mutex<Option<MinecraftSession>>,
-    pub install: Mutex<Option<CancellationToken>>,
     pub sign_in: Mutex<Option<CancellationToken>>,
-    pub game: Mutex<Option<GameHandle>>,
+    /// The one running installation: (version id, cancel token).
+    pub install: Mutex<Option<(String, CancellationToken)>>,
+    /// Running games keyed by instance id.
+    pub games: Mutex<HashMap<String, GameHandle>>,
 }
 
 pub struct GameHandle {
     pub stop: CancellationToken,
-    pub version: String,
+    pub started_at: i64,
 }
 
 impl AppState {
-    pub fn new() -> Result<Self, nc_launcher::download::DownloadError> {
-        let layout = Layout::new(Layout::default_root());
-        let dl = Downloader::new(&nc_launcher::user_agent(), DownloaderConfig::default())?;
-        Ok(Self {
-            meta: Meta::new(dl, layout),
+    pub fn new(layout: Layout, log_dir: PathBuf) -> Self {
+        let (store, startup_error) = match Store::open(&layout.root().join("night-client.db")) {
+            Ok(s) => (Some(Arc::new(s)), None),
+            Err(e) => {
+                tracing::error!(error = %e, "database unavailable");
+                (None, Some(e.to_string()))
+            }
+        };
+        let settings = store.as_ref().map(|s| s.app_settings()).unwrap_or_default();
+        Self {
+            meta: RwLock::new(build_meta(&layout, &settings)),
+            layout,
+            log_dir,
+            store,
+            startup_error,
             auth: client_id()
                 .and_then(|id| Client::new(AuthConfig::new(id), &nc_launcher::user_agent()).ok()),
             session: Mutex::new(None),
-            install: Mutex::new(None),
             sign_in: Mutex::new(None),
-            game: Mutex::new(None),
-        })
+            install: Mutex::new(None),
+            games: Mutex::new(HashMap::new()),
+        }
     }
+
+    pub fn meta(&self) -> Meta {
+        self.meta
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    pub fn apply_settings(&self, settings: &AppSettings) {
+        *self
+            .meta
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            build_meta(&self.layout, settings);
+    }
+}
+
+fn build_meta(layout: &Layout, s: &AppSettings) -> Meta {
+    let cfg = DownloaderConfig {
+        concurrency: usize::from(s.download_concurrency.clamp(1, 16)),
+        ..Default::default()
+    };
+    // Building a reqwest client only fails if the TLS backend cannot load,
+    // which would make the launcher unusable anyway.
+    let dl = Downloader::new(&nc_launcher::user_agent(), cfg).expect("HTTP client initialises");
+    Meta::new(dl, layout.clone())
 }
 
 /// Azure application (client) ID: runtime env var overrides the build-time
@@ -61,9 +111,16 @@ fn is_guid(s: &str) -> bool {
 }
 
 /// Lock helper: a poisoned mutex only means another command panicked; the
-/// data (an Option) is still valid.
+/// data is still valid.
 pub fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+pub fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]

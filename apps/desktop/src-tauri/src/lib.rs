@@ -1,17 +1,56 @@
-//! Thin Tauri layer: IPC commands and events over `nc-launcher` services.
+//! Thin Tauri layer: IPC commands and events over `nc-launcher` and
+//! `nc-store` services.
 //!
-//! Rules for this module:
-//! * every command validates its input before touching the launcher;
+//! Rules for this crate:
+//! * every command validates its input before touching a service;
 //! * no token or secret is ever returned to the WebView;
-//! * long work runs on the Tokio runtime, never on the main thread;
+//! * long work runs on the async runtime or the blocking pool, never on the
+//!   main thread;
 //! * high-frequency data (progress, logs) is throttled/batched before IPC.
 
 mod commands;
 mod state;
 
-use std::{sync::OnceLock, time::Instant};
+use std::{path::PathBuf, sync::OnceLock, time::Instant};
 
+use nc_launcher::layout::Layout;
 use tauri::Manager;
+
+/// The full list of IPC commands. `build.rs` generates one `allow-*`
+/// permission per entry; `capabilities/main.json` grants them to the main
+/// window only.
+macro_rules! app_commands {
+    () => {
+        tauri::generate_handler![
+            ui_ready,
+            commands::app::app_info,
+            commands::app::system_info,
+            commands::app::get_settings,
+            commands::app::update_settings,
+            commands::app::diagnostics,
+            commands::app::recent_logs,
+            commands::app::open_data_dir,
+            commands::app::open_logs_dir,
+            commands::versions::list_versions,
+            commands::versions::install_version,
+            commands::versions::cancel_install,
+            commands::versions::current_install,
+            commands::instances::list_instances,
+            commands::instances::get_instance,
+            commands::instances::create_instance,
+            commands::instances::update_instance,
+            commands::instances::delete_instance,
+            commands::instances::open_instance_dir,
+            commands::account::account,
+            commands::account::sign_in,
+            commands::account::cancel_sign_in,
+            commands::account::sign_out,
+            commands::game::running_instances,
+            commands::game::launch_instance,
+            commands::game::stop_instance,
+        ]
+    };
+}
 
 static STARTED: OnceLock<Instant> = OnceLock::new();
 
@@ -52,43 +91,47 @@ fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
+/// Logs are machine-local: `%LOCALAPPDATA%\NightClient\logs`.
+fn log_dir() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(Layout::default_root)
+        .join("NightClient")
+        .join("logs")
+}
+
 pub fn run() {
     STARTED.get_or_init(Instant::now);
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info,night_client_lib=debug".into()),
-        )
-        .with_writer(std::io::stderr)
-        .init();
+    let log_dir = log_dir();
+    // Keep the guard alive for the whole process so buffered lines are flushed.
+    let _log_guard =
+        match nc_launcher::logging::init(&log_dir, "info,night_client_lib=debug,bench=info") {
+            Ok(g) => Some(g),
+            Err(e) => {
+                eprintln!("file logging unavailable: {e}");
+                None
+            }
+        };
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "Night Client starting");
 
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
                 let _ = w.unminimize();
                 let _ = w.set_focus();
             }
         }))
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
-            let state = state::AppState::new().map_err(|e| e.to_string())?;
-            app.manage(state);
+        .setup(move |app| {
+            app.manage(state::AppState::new(
+                Layout::new(Layout::default_root()),
+                log_dir.clone(),
+            ));
             create_main_window(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            ui_ready,
-            commands::app_info,
-            commands::list_versions,
-            commands::install_version,
-            commands::cancel_install,
-            commands::account,
-            commands::sign_in,
-            commands::cancel_sign_in,
-            commands::sign_out,
-            commands::launch_game,
-            commands::stop_game,
-            commands::open_data_dir,
-        ])
+        .invoke_handler(app_commands!())
         .run(tauri::generate_context!());
 
     if let Err(e) = result {
