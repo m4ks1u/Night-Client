@@ -17,6 +17,10 @@ pub struct Meta {
     pub dl: Downloader,
     pub layout: Layout,
     pub manifest_url: String,
+    /// Fabric Meta API base (no trailing slash).
+    pub fabric_meta_url: String,
+    /// NeoForge Maven releases base (no trailing slash).
+    pub neoforge_maven_url: String,
 }
 
 impl Meta {
@@ -25,6 +29,8 @@ impl Meta {
             dl,
             layout,
             manifest_url: VERSION_MANIFEST_URL.into(),
+            fabric_meta_url: "https://meta.fabricmc.net".into(),
+            neoforge_maven_url: "https://maven.neoforged.net/releases".into(),
         }
     }
 
