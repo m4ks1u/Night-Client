@@ -143,5 +143,5 @@ Results are in `docs/stage-4-report.md`.
 | A (runs 2–5 shown) | 292–314 ms | 174.9–182.7 | 0–0.02 % |
 | B (5 runs) | 298, 326, 317, 309, 321 ms | 176.0, 206.6, 205.8, 184.8, 183.3 | 0–0.1 % |
 
-Startup is unchanged; the Modrinth client is created lazily and makes no requests at startup. Memory
+Startup is unchanged. The Modrinth client is constructed at startup but makes no network requests until used. Memory
 shows the same occasional ~205 MB runs seen since Stage 3.
