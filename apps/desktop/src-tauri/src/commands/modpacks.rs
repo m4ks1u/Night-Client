@@ -357,6 +357,63 @@ async fn import(
     }
 }
 
+/// Finish or undo a modpack update of this instance that was interrupted (a
+/// crash, the launcher closed), so its files match what the database
+/// records. Call it while holding the instance's `modpack_updates` slot.
+pub(crate) async fn recover_update(
+    state: &AppState,
+    instance_id: &str,
+    game_dir: PathBuf,
+) -> Result<()> {
+    let id = instance_id.to_owned();
+    let recorded = with_db(state, move |db| db.get_modpack(&id))
+        .await?
+        .and_then(|r| r.version_id);
+    let found = tauri::async_runtime::spawn_blocking(move || {
+        packupdate::recover(&game_dir, recorded.as_deref())
+    })
+    .await
+    .map_err(|e| CmdError::new("internal", e.to_string()))??;
+    if found != packupdate::Recovered::default() {
+        tracing::warn!(
+            instance = %instance_id,
+            rolled_back = found.rolled_back,
+            cleaned = found.cleaned,
+            "finished an interrupted modpack update"
+        );
+    }
+    Ok(())
+}
+
+/// Holds an instance's `modpack_updates` slot (so no modpack update can
+/// start) until dropped.
+pub(crate) struct Reserved<'a> {
+    state: &'a AppState,
+    id: String,
+}
+
+impl Drop for Reserved<'_> {
+    fn drop(&mut self) {
+        lock(&self.state.modpack_updates).remove(&self.id);
+    }
+}
+
+/// Reserve an instance's slot, or fail when a modpack update holds it.
+pub(crate) fn reserve<'a>(state: &'a AppState, id: &str) -> Result<Reserved<'a>> {
+    let mut running = lock(&state.modpack_updates);
+    if running.contains_key(id) {
+        return Err(CmdError::new(
+            "busy",
+            "This instance's modpack is being updated. Try again when it's done.",
+        ));
+    }
+    running.insert(id.to_owned(), CancellationToken::new());
+    Ok(Reserved {
+        state,
+        id: id.to_owned(),
+    })
+}
+
 /// Forward download progress as `modpack://progress`, at most every 150 ms.
 /// `totals` replaces the engine's (an import knows the whole pack's size).
 fn emitter(
@@ -429,7 +486,8 @@ fn from_rows(rows: Vec<PackFileRecord>) -> Vec<Tracked> {
 }
 
 /// Cancel an import or an update in progress. A cancelled import discards
-/// the half-made instance; a cancelled update changes nothing.
+/// the half-made instance; a cancelled update changes nothing (an update
+/// that is already moving files completes or is undone).
 #[tauri::command]
 pub fn modpack_cancel(state: State<'_, AppState>, token: String) {
     if let Some(p) = lock(&state.modpacks).get(&token) {
@@ -514,26 +572,30 @@ pub async fn modpack_update(
         return Err(invalid("invalid version"));
     }
     super::ensure_not_relocating(&state)?;
-    if lock(&state.games).contains_key(&instance_id) {
-        return Err(CmdError::new(
-            "busy",
-            "Close the game before updating its modpack.",
-        ));
-    }
     let cancel = CancellationToken::new();
     {
         let mut running = lock(&state.modpack_updates);
         if running.contains_key(&instance_id) {
             return Err(CmdError::new(
                 "busy",
-                "This modpack is already being updated.",
+                "This instance is busy: its modpack is being updated, or the game is starting.",
             ));
         }
         running.insert(instance_id.clone(), cancel.clone());
     }
+    // Checked while holding the instance's slot: a launch holds the same slot
+    // until its game is registered, so the two can't overlap.
+    if lock(&state.games).contains_key(&instance_id) {
+        lock(&state.modpack_updates).remove(&instance_id);
+        return Err(CmdError::new(
+            "busy",
+            "Close the game before updating its modpack.",
+        ));
+    }
     let result = update(&app, &state, &instance_id, &version_id, &cancel).await;
     lock(&state.modpack_updates).remove(&instance_id);
-    if cancel.is_cancelled() && result.is_err() {
+    // "Nothing was changed" holds unless undoing a failed update failed too.
+    if cancel.is_cancelled() && result.as_ref().is_err_and(|e| e.code != "update_recovery") {
         return Err(CmdError::new(
             "cancelled",
             "Update cancelled. Nothing was changed.",
@@ -596,17 +658,21 @@ async fn update(
         Some(d) => PathBuf::from(d),
         None => nc_launcher::instance::ensure_game_dir(&state.layout, &inst.dir_name)?,
     };
-    let report = packupdate::update(
+    // An earlier update that was interrupted is finished or undone first.
+    recover_update(state, &inst.id, game_dir.clone()).await?;
+    let (report, pending) = packupdate::update(
         &state.meta().dl,
         &game_dir,
         &path,
         &pack,
         &from_rows(rows),
+        &v.id,
         cancel,
         emitter(app, instance_id, None),
     )
     .await?;
-    // From here on the files are in place: record them before anything else.
+    // From here on the files are in place, and the old ones kept: record the
+    // update, then drop the old files; if recording fails, put them back.
     let origin = Origin {
         project_id: Some(project),
         version_id: Some(v.id.clone()),
@@ -625,11 +691,30 @@ async fn update(
             .filter(|lv| Some(lv) != inst.loader_version.as_ref()),
         ..Default::default()
     };
-    let updated = with_db(state, move |db| {
+    let recorded = with_db(state, move |db| {
         db.set_modpack(&id, &new_rec, &files)?;
         db.update_instance(&id, patch)
     })
-    .await?;
+    .await;
+    let updated = match recorded {
+        Ok(u) => {
+            let done =
+                tauri::async_runtime::spawn_blocking(move || packupdate::finish(pending)).await;
+            if let Ok(Err(e)) = done {
+                // The update is recorded; the folder is cleaned up next time.
+                tracing::warn!(error = %e, "could not remove the finished update's folder");
+            }
+            u
+        }
+        Err(e) => {
+            let undone =
+                tauri::async_runtime::spawn_blocking(move || packupdate::rollback(pending))
+                    .await
+                    .map_err(|j| CmdError::new("internal", j.to_string()))?;
+            undone?;
+            return Err(e);
+        }
+    };
     tracing::info!(
         id = %updated.id,
         version = %pack.version_id,

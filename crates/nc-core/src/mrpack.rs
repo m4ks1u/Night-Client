@@ -257,15 +257,20 @@ impl Index {
     }
 }
 
+/// Top-level folders of an instance that belong to the launcher:
+/// `.natives` (native libraries extracted for the game to load) and
+/// `.nc-update` (modpack update staging and backups).
+pub const RESERVED_DIRS: [&str; 2] = [".natives", ".nc-update"];
+
+/// True for a launcher-owned top-level folder name, in any letter case.
+pub fn is_reserved_dir(name: &str) -> bool {
+    RESERVED_DIRS.iter().any(|r| name.eq_ignore_ascii_case(r))
+}
+
 /// A path a pack may write inside the instance folder: a safe relative
-/// path that is not in `.natives`, where the launcher extracts native
-/// libraries for the game to load.
+/// path that is not in one of the [`RESERVED_DIRS`].
 pub fn instance_path_allowed(path: &str) -> bool {
-    validate_relative(path).is_ok()
-        && !path
-            .split('/')
-            .next()
-            .is_some_and(|first| first.eq_ignore_ascii_case(".natives"))
+    validate_relative(path).is_ok() && !path.split('/').next().is_some_and(is_reserved_dir)
 }
 
 /// Map an override entry (`overrides/config/x.toml`) to its path inside the
@@ -469,5 +474,13 @@ mod tests {
             !instance_path_allowed(".natives/lwjgl.dll") && !instance_path_allowed(".NATIVES/x")
         );
         assert!(!instance_path_allowed("../x") && !instance_path_allowed(""));
+        for staging in [".nc-update/x", ".NC-Update/journal.json", ".nc-update"] {
+            assert!(!instance_path_allowed(staging), "{staging}");
+        }
+        // Windows ignores a trailing dot or space; those are refused too.
+        assert!(!instance_path_allowed(".nc-update./x") && !instance_path_allowed(".nc-update /x"));
+        assert!(
+            instance_path_allowed("config/.nc-update/x") && instance_path_allowed(".nc-updates/x")
+        );
     }
 }

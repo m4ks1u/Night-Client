@@ -6,6 +6,9 @@
 //!    (HTTPS, allowed hosts, SHA-1 and size), then SHA-512 as well.
 //! 3. [`extract_overrides`]: copy `overrides/` then `client-overrides/` into
 //!    the instance, with the same path rules, no symlinks and a size cap.
+//!
+//! Every write goes through [`Confined`]: a junction or symlink already in
+//! the instance folder is never followed.
 
 use std::{
     collections::HashMap,
@@ -14,7 +17,7 @@ use std::{
 };
 
 use nc_core::mrpack::{
-    Index, MAX_INDEX_BYTES, Pack, PackFile, instance_path_allowed, override_target,
+    Index, MAX_INDEX_BYTES, Pack, PackFile, instance_path_allowed, is_reserved_dir, override_target,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -24,8 +27,9 @@ use super::{
 };
 use crate::{
     LauncherError,
+    confined::Confined,
     download::{DownloadTask, Downloader, Progress, Summary},
-    fsutil::{self, ExtractError},
+    fsutil::ExtractError,
 };
 
 /// SHA-512 (lower-case hex) of a pack file, to look it up on Modrinth.
@@ -118,13 +122,61 @@ pub async fn download_files(
     cancel: &CancellationToken,
     on_progress: impl Fn(Progress) + Send + Sync + 'static,
 ) -> Result<Summary, LauncherError> {
+    let root = Confined::new(game_dir).map_err(LauncherError::io(game_dir))?;
+    for f in files {
+        check_instance_path(&root, &f.path)?;
+    }
+    download_confined(dl, &root, files, cancel, on_progress).await
+}
+
+/// Refuse `rel` unless a pack may write it: [`instance_path_allowed`], and
+/// its first folder on disk is not a reserved one reached through another
+/// name (a Windows 8.3 short name such as `NC-UPD~1`).
+pub(crate) fn check_instance_path(root: &Confined, rel: &str) -> Result<(), LauncherError> {
+    if !instance_path_allowed(rel) {
+        return Err(LauncherError::InvalidPath(rel.to_owned()));
+    }
+    let real = root
+        .real_first(rel)
+        .map_err(LauncherError::io(root.root().join(rel)))?;
+    if real.is_some_and(|n| is_reserved_dir(&n.to_string_lossy())) {
+        return Err(LauncherError::InvalidPath(rel.to_owned()));
+    }
+    Ok(())
+}
+
+/// [`download_files`] without the reserved-folder check, for the update's
+/// own staging folder. Parent folders are created through `root`, and the
+/// destination and its `.part` file must not be links.
+pub(crate) async fn download_confined(
+    dl: &Downloader,
+    root: &Confined,
+    files: &[PackFile],
+    cancel: &CancellationToken,
+    on_progress: impl Fn(Progress) + Send + Sync + 'static,
+) -> Result<Summary, LauncherError> {
+    let (r, rels) = (
+        root.clone(),
+        files.iter().map(|f| f.path.clone()).collect::<Vec<_>>(),
+    );
+    let dests = tokio::task::spawn_blocking(move || {
+        rels.iter()
+            .map(|rel| {
+                let dest = r
+                    .create_parent(rel)
+                    .map_err(LauncherError::io(r.root().join(rel)))?;
+                let part = format!("{rel}.part");
+                r.path(&part)
+                    .map_err(LauncherError::io(r.root().join(&part)))?;
+                Ok(dest)
+            })
+            .collect::<Result<Vec<PathBuf>, LauncherError>>()
+    })
+    .await
+    .map_err(|e| LauncherError::Spawn(e.to_string()))??;
     let mut tasks = Vec::with_capacity(files.len());
     let mut checks = Vec::with_capacity(files.len());
-    for f in files {
-        if !instance_path_allowed(&f.path) {
-            return Err(LauncherError::InvalidPath(f.path.clone()));
-        }
-        let dest = fsutil::safe_join(game_dir, &f.path)?;
+    for (f, dest) in files.iter().zip(dests) {
         tasks.push(DownloadTask {
             url: f.url.clone(),
             dest: dest.clone(),
@@ -220,13 +272,15 @@ impl<W: std::io::Write> std::io::Write for HashWriter<W> {
     }
 }
 
-/// Copy every chosen override to `dest(rel)` (a `.part` file, then
-/// renamed), hashing as it goes. Returns what was written and where.
+/// Copy every chosen override to `dest(rel)`, a path relative to `root`
+/// (a temporary file, then renamed), hashing as it goes. Returns what was
+/// written and where (relative to `root`).
 pub(crate) fn copy_overrides(
     archive: &Path,
     max_total: u64,
-    mut dest: impl FnMut(&str) -> Result<PathBuf, LauncherError>,
-) -> Result<Vec<(Tracked, PathBuf)>, LauncherError> {
+    root: &Confined,
+    mut dest: impl FnMut(&str) -> Result<String, LauncherError>,
+) -> Result<Vec<(Tracked, String)>, LauncherError> {
     let mut z = open(archive)?;
     let order = chosen_overrides(&mut z)?;
     let mut written = 0u64;
@@ -240,28 +294,30 @@ pub(crate) fn copy_overrides(
             continue;
         };
         let target = dest(rel)?;
-        if let Some(p) = target.parent() {
-            std::fs::create_dir_all(p).map_err(LauncherError::io(p))?;
-        }
-        let part = target.with_file_name(format!(
-            "{}.part",
-            target.file_name().unwrap_or_default().to_string_lossy()
-        ));
-        let file = std::fs::File::create(&part).map_err(LauncherError::io(&part))?;
+        let (file, part) = root
+            .temp_for(&target)
+            .map_err(LauncherError::io(root.root().join(&target)))?;
         let mut w = HashWriter {
             inner: file,
             hash: <sha1::Sha1 as sha1::Digest>::new(),
         };
         let remaining = max_total.saturating_sub(written);
-        written += std::io::copy(&mut (&mut entry).take(remaining + 1), &mut w)
-            .map_err(LauncherError::io(&part))?;
+        let copied = std::io::copy(&mut (&mut entry).take(remaining + 1), &mut w);
         let sha1 = hex::encode(sha1::Digest::finalize(w.hash));
         drop(w.inner);
+        match copied {
+            Ok(n) => written += n,
+            Err(e) => {
+                let _ = std::fs::remove_file(&part);
+                return Err(LauncherError::io(&part)(e));
+            }
+        }
         if written > max_total {
             let _ = std::fs::remove_file(&part);
             return Err(LauncherError::Extract(ExtractError::TooLarge(max_total)));
         }
-        std::fs::rename(&part, &target).map_err(LauncherError::io(&target))?;
+        root.persist(&part, &target)
+            .map_err(LauncherError::io(root.root().join(&target)))?;
         out.push((
             Tracked {
                 path: rel.to_owned(),
@@ -282,8 +338,10 @@ pub fn extract_overrides(
     game_dir: &Path,
     max_total: u64,
 ) -> Result<Vec<Tracked>, LauncherError> {
-    Ok(copy_overrides(archive, max_total, |rel| {
-        Ok(fsutil::safe_join(game_dir, rel)?)
+    let root = Confined::new(game_dir).map_err(LauncherError::io(game_dir))?;
+    Ok(copy_overrides(archive, max_total, &root, |rel| {
+        check_instance_path(&root, rel)?;
+        Ok(rel.to_owned())
     })?
     .into_iter()
     .map(|(t, _)| t)

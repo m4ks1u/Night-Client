@@ -80,6 +80,15 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
             "this version is still being installed",
         ));
     }
+    // No modpack update may run while the game starts, and one that was
+    // interrupted is finished or undone before the game reads the files.
+    // The slot is held until the game is registered below.
+    let slot = super::modpacks::reserve(&state, &id)?;
+    let game_dir = match &instance.game_dir {
+        Some(d) => std::path::PathBuf::from(d),
+        None => nc_launcher::instance::ensure_game_dir(&state.layout, &instance.dir_name)?,
+    };
+    super::modpacks::recover_update(&state, &id, game_dir).await?;
 
     let cmd = prepare_launch(
         &state.layout,
@@ -141,6 +150,7 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
             started_at,
         },
     );
+    drop(slot);
     tracing::info!(instance = %id, version = %instance.game_version, pid = ?game.pid, "game started");
     let _ = app.emit("game://started", &id);
     if settings.hide_on_launch

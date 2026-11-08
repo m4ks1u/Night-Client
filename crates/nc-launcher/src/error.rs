@@ -45,6 +45,10 @@ pub enum LauncherError {
     Cancelled,
     #[error("failed to start the game: {0}")]
     Spawn(String),
+    /// A modpack update failed and could not be fully undone; the old files
+    /// are kept and undoing is retried before the next launch or update.
+    #[error("{0}")]
+    Recovery(String),
 }
 
 impl LauncherError {
@@ -71,6 +75,7 @@ impl LauncherError {
             Self::Processor(_) => "loader_processor",
             Self::Modrinth(e) => e.code(),
             Self::JvmArgs(_) => "invalid_jvm_args",
+            Self::Recovery(_) => "update_recovery",
         }
     }
 
