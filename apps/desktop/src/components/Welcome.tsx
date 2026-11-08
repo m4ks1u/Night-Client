@@ -98,7 +98,7 @@ export function Welcome() {
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 <li>Microsoft and Xbox Live, to sign you in. Your password is entered on Microsoft's page, never in Night Client.</li>
                 <li>Mojang, Fabric and NeoForge, to download game files, which are verified before use.</li>
-                <li>Modrinth, only when you browse, install or update mods.</li>
+                <li>Modrinth, when you browse, install or update mods, or add mod files it should identify.</li>
               </ul>
               <p className="mt-2">Crash reports stay on this PC unless you export them from Diagnostics.</p>
               <div className="mt-4">

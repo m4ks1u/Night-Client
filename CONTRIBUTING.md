@@ -24,6 +24,8 @@ larger changes before you start.
    pnpm typecheck
    pnpm test
    ```
+   UI changes should also pass the desktop end-to-end scripts in `apps/desktop/e2e` (see
+   [docs/dev-setup.md](docs/dev-setup.md)).
 4. Open a pull request. CI must pass. An independent review (human or Codex) is required before merge.
 
 ## Code layout

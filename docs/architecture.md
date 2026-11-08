@@ -222,6 +222,35 @@ Screens for features that don't exist yet are not shown, so there are no placeho
 - `memory.rs` sets WebView2's low memory-usage target while the window is minimized or hidden for a
   game, and normal again when it is shown.
 
+## Updates
+
+- `commands/update.rs` wraps `tauri-plugin-updater`. The public key and feed URL are compiled in
+  (`NIGHT_CLIENT_UPDATE_PUBKEY`, `NIGHT_CLIENT_UPDATE_ENDPOINT`) by the release workflow. Without
+  them the plugin is not registered and Settings explains that the build has no update channel.
+- `check_for_update` stores the found update in managed state. `install_update` downloads it,
+  verifies the minisign signature (`requireSignedVersion` also binds it to the announced version)
+  and runs the NSIS installer in passive mode. The installer closes the app and starts the new
+  version.
+- Installs are refused while games run, downloads are queued or data is being moved.
+- The WebView has no updater permission; only these two app commands exist.
+- The feed is `latest.json` on a fixed `update-feed` GitHub release, updated by a manual workflow
+  after a release is published (docs/releasing.md).
+
+## Crash reports and diagnostics
+
+- A panic hook (`install_crash_reporter` in `lib.rs`) logs the panic and writes
+  `logs/crash-<time>-<pid>.txt` through `nc_launcher::report` (redacted, newest 10 kept).
+- `take_crash_notice` reports new crash files once, and the UI shows a toast.
+- Diagnostics → Export… saves a zip (native save dialog, Rust side) with `diagnostics.json`, the
+  newest 5 logs and the crash reports. Every line is redacted again, and large files are cut to
+  their last 4 MiB. The database, the vault and game files are never included.
+
+## First run
+
+`components/Welcome.tsx` is a modal shown while `settings.onboarded` is false. Finishing, skipping
+or pressing Esc sets it, and Settings → About can show it again. It also holds the
+automatic-update-check choice.
+
 ## Security review
 
 See [security-review.md](security-review.md) for each requirement in the brief, how it is met, and
@@ -229,4 +258,4 @@ where it is tested.
 
 ## Planned additions
 
-- Updater with signed artifacts (Stage 8).
+- Authenticode signing of the installer (needs a code-signing certificate).

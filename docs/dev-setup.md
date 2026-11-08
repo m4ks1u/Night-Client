@@ -142,3 +142,39 @@ cargo deny check advisories licenses bans sources
 ```bash
 pnpm audit
 ```
+
+## 11. More end-to-end tests (Stage 8)
+
+Both use a throwaway `APPDATA`/`LOCALAPPDATA`; run them from `apps/desktop` with `pnpm dev` running.
+
+```bash
+node e2e/welcome.mjs ../../target/debug/night-client.exe
+```
+```bash
+node e2e/crash-report.mjs ../../target/debug/night-client.exe
+```
+
+The other scripts skip the first-run welcome automatically (it is recorded as seen in that profile).
+
+### Update flow (install → refuse a bad update → update → uninstall)
+
+This one installs Night Client for your Windows user into a test folder, then uninstalls it. Use a
+**throwaway** key that never leaves the test folder, and never your release key.
+
+1. Make a test folder `T`, generate a test key and write two config overrides:
+   ```bash
+   pnpm tauri signer generate -w T/test.key -p test --ci
+   ```
+   For each `v` in `0.0.1` and `0.0.2`, `T/conf-v.json` holds
+   `{"version":"v","bundle":{"createUpdaterArtifacts":true},"plugins":{"updater":{"pubkey":"<contents of T/test.key.pub>","dangerousInsecureTransportProtocol":true}}}`.
+   The insecure-transport flag only exists in these test overrides. The shipped config requires HTTPS.
+2. With `NIGHT_CLIENT_UPDATE_PUBKEY` set to the test public key,
+   `NIGHT_CLIENT_UPDATE_ENDPOINT=http://127.0.0.1:8737/latest.json`, and `TAURI_SIGNING_PRIVATE_KEY` /
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` set to the test key, run
+   `pnpm tauri build --debug --config T/conf-v.json` for each version. Copy
+   `target/debug/bundle/nsis/*setup.exe*` into `T/v/`.
+3. Run the test:
+   ```bash
+   node e2e/update-flow.mjs T
+   ```
+   Then rebuild normally, so the debug exe no longer carries the test channel.

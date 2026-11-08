@@ -6,6 +6,18 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 8 (public beta preparation), version 0.1.0-beta.1
+- Signed in-app updates: Settings → Updates (check, notes, install), plus an optional automatic check at start that shows a notification.
+- Crash reports saved on this PC (redacted), with a notice on the next start.
+- Diagnostics → Export… saves a redacted zip for bug reports.
+- First-run welcome: what Night Client is, where data goes, what it connects to, and how to get started.
+- Release workflow (signed installer, `latest.json`, SHA-256 sums, as a draft release) and a manual "Publish update feed" workflow.
+- `PRIVACY.md`, `docs/releasing.md` and the 0.1.0-beta.1 release notes.
+
+### Changed
+- The installer uses the app icon.
+- Settings picks up changes made elsewhere, such as in the welcome.
+
 ### Added: Stage 7 (security, testing, optimization)
 - Move the game data folder from Settings → Storage (rename or copy, rolled back on any failure; the app restarts when done).
 - Updating mods installs dependencies the new versions require, and reports any that are missing.

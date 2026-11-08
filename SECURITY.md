@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-Night Client is pre-release. Only the latest commit on `main` receives security fixes until the
-first public beta.
+Night Client is in beta. Security fixes go into the latest release only, and installed copies receive
+them through the signed in-app updater (Settings → Updates). Older betas are not patched.
 
 ## Reporting a vulnerability
 
@@ -32,4 +32,5 @@ Out of scope: vulnerabilities in Minecraft itself or in third-party mods. Report
 - Every downloaded file is checked against an official hash when one is published. Mods are accepted only from `cdn.modrinth.com` over HTTPS, and checked with SHA-1, size and SHA-512.
 - Modrinth content is treated as untrusted: ids are validated before use in URLs, file names are validated, project pages are never rendered as HTML, and the app can only open `modrinth.com/mod/<slug>` links.
 - Local mod files are picked with a native dialog in the Rust process, never from a path supplied by the WebView. They are inspected without being executed, and a mod declared for a different loader is refused.
-- Application updates are signed. Signing keys are never stored in this repository.
+- Application updates are signed (minisign) and verified before the installer runs. The signature must also name the announced version, so an old release cannot be replayed as a new one. Signing keys are never stored in this repository, and builds without a configured update key have no updater at all.
+- Crash reports and exported diagnostics are redacted and never uploaded automatically. See [docs/security-review.md](docs/security-review.md) for the full review.
