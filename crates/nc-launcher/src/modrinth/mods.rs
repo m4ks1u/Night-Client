@@ -197,7 +197,8 @@ pub fn inspect_jar(path: &Path) -> Result<JarInfo, LauncherError> {
     if let Some(json) = read("fabric.mod.json") {
         let id = serde_json::from_str::<serde_json::Value>(&json)
             .ok()
-            .and_then(|v| v.get("id")?.as_str().map(str::to_owned));
+            .and_then(|v| v.get("id")?.as_str().map(str::to_owned))
+            .filter(|id| plausible_mod_id(id));
         return Ok(JarInfo {
             loader: Some("fabric".into()),
             mod_id: id,
@@ -232,7 +233,18 @@ fn toml_mod_id(toml: &str) -> Option<String> {
         .map(str::trim)
         .find_map(|l| l.strip_prefix("modId"))
         .and_then(|rest| rest.split('"').nth(1))
+        .filter(|id| plausible_mod_id(id))
         .map(str::to_owned)
+}
+
+/// Mod ids come from an untrusted file and are stored and displayed, so
+/// only keep ones in the shape Fabric and NeoForge require: 2–64 ASCII
+/// letters, digits, `_`, `-` or `.`.
+fn plausible_mod_id(id: &str) -> bool {
+    (2..=64).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
 }
 
 /// Copy a user-chosen jar into the mods folder after validation:
@@ -352,6 +364,26 @@ mod tests {
         assert_eq!(inspect_jar(&n).unwrap().mod_id.as_deref(), Some("jei"));
         std::fs::write(d.path().join("bad.jar"), "not a zip").unwrap();
         assert!(inspect_jar(&d.path().join("bad.jar")).is_err());
+
+        // Hostile metadata: the loader is still detected, the id is dropped.
+        let long = format!(r#"{{"id":"{}"}}"#, "a".repeat(5000));
+        let h = jar(d.path(), "h.jar", &[("fabric.mod.json", long.as_str())]);
+        assert_eq!(
+            inspect_jar(&h).unwrap(),
+            JarInfo {
+                loader: Some("fabric".into()),
+                mod_id: None
+            }
+        );
+        let t = jar(
+            d.path(),
+            "t.jar",
+            &[(
+                "META-INF/mods.toml",
+                "modId=\"<img src=x onerror=alert(1)>\"\n",
+            )],
+        );
+        assert_eq!(inspect_jar(&t).unwrap().mod_id, None);
     }
 
     #[test]
