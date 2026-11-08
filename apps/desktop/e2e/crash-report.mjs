@@ -29,7 +29,7 @@ try {
   const crashes = readdirSync(logs).filter((n) => n.startsWith("crash-"));
   r.check("crash report written", crashes.length === 1, JSON.stringify(crashes));
   const text = crashes[0] ? readFileSync(join(logs, crashes[0]), "utf8") : "";
-  r.check("crash report names the panic and version", /test panic/.test(text) && /Night Client \d+\.\d+\.\d+ crashed/.test(text));
+  r.check("crash report names the panic and version", /test panic/.test(text) && /Night Client \d+\.\d+\.\d+(-[0-9A-Za-z.]+)? crashed/.test(text));
   r.check("token removed from the crash report", !text.includes("c2lnbmF0dXJlLXRlc3Q") && !text.includes("eyJzdWIiOiJ0ZXN0In0"), text.slice(0, 300));
   const log = readdirSync(logs).filter((n) => n.endsWith(".log")).map((n) => readFileSync(join(logs, n), "utf8")).join("\n");
   r.check("panic logged without the token", /Night Client crashed/.test(log) && !log.includes("c2lnbmF0dXJlLXRlc3Q"));

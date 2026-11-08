@@ -198,3 +198,16 @@ effect, because Tauri passes its own arguments.
 Minimized for 20 s with the low memory-usage target: private memory is unchanged (115.6 MB), and the
 renderer's working set drops from 73.8 to 21.6 MB (total working set from 327 to 285 MB).
 With Hardware acceleration switched on, the release build idles at 176 MB, confirming the setting is applied.
+
+## Stage 8 re-run (2026-11-08, same PC, release build 0.1.0-beta.1)
+
+| Run | UI ready | Private MB | Working set MB | Idle CPU |
+|---|---|---|---|---|
+| 1 | 257 ms | 117.4 | 333.4 | 0 % |
+| 2 | 256 ms | 117.7 | 330.8 | 0 % |
+| 3 | 253 ms | 120.2 | 333.9 | 0 % |
+| 4 | 253 ms | 120.4 | 333.7 | 0 % |
+| 5 | 254 ms | 117.8 | 330.9 | 0 % |
+
+`night-client.exe` is 22.8 MB (21.3 MB at Stage 7; the updater plugin accounts for the difference) and the NSIS
+installer is 6.2 MB. Silent install takes about 1 s. This build has no update channel, so no update check runs at startup.
