@@ -51,12 +51,8 @@ fn read(path: &Path) -> Result<Option<String>, LauncherError> {
 }
 
 fn write(path: &Path, text: &str) -> Result<(), LauncherError> {
-    if let Some(p) = path.parent() {
-        std::fs::create_dir_all(p).map_err(LauncherError::io(p))?;
-    }
-    let tmp = path.with_extension("nc-tmp");
-    std::fs::write(&tmp, text).map_err(LauncherError::io(&tmp))?;
-    std::fs::rename(&tmp, path).map_err(LauncherError::io(path))
+    // A random, exclusively created temporary file, then a rename.
+    crate::fsutil::atomic_write(path, text.as_bytes()).map_err(LauncherError::io(path))
 }
 
 /// The data version of a client jar (`version.json` → `world_version`,

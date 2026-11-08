@@ -7,6 +7,7 @@
 
 pub mod accounts;
 pub mod auth;
+pub mod confined;
 pub mod download;
 pub mod error;
 pub mod fsutil;

@@ -28,21 +28,24 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
         .parent()
         .ok_or_else(|| io::Error::other("path has no parent"))?;
     fs::create_dir_all(parent)?;
-    let tmp = temp_sibling(path);
-    {
-        let mut f = fs::File::create(&tmp)?;
+    // A random name, created exclusively: an existing file or link with a
+    // guessable name is never opened.
+    let tmp = crate::confined::temp_name(path)?;
+    let written = (|| {
+        let mut f = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
         f.write_all(bytes)?;
-        f.sync_all()?;
+        f.sync_all()
+    })();
+    if let Err(e) = written {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
     }
     fs::rename(&tmp, path).inspect_err(|_| {
         let _ = fs::remove_file(&tmp);
     })
-}
-
-fn temp_sibling(path: &Path) -> PathBuf {
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(format!(".{}.tmp", std::process::id()));
-    path.with_file_name(name)
 }
 
 /// Lower-case hex SHA-1 of a file, streamed.
@@ -91,7 +94,9 @@ pub enum ExtractError {
 ///
 /// Every entry name is validated (no absolute paths, `..`, drive letters,
 /// alternate data streams); a single unsafe entry aborts extraction.
-/// Total uncompressed size is capped to defend against zip bombs.
+/// Total uncompressed size is capped to defend against zip bombs. Writes
+/// go through [`Confined`](crate::confined::Confined): a junction or
+/// symlink already inside `dest` is never followed.
 pub fn extract_zip(
     archive: &Path,
     dest: &Path,
@@ -100,7 +105,7 @@ pub fn extract_zip(
 ) -> Result<usize, ExtractError> {
     let file = fs::File::open(archive)?;
     let mut zip = zip::ZipArchive::new(io::BufReader::new(file))?;
-    fs::create_dir_all(dest)?;
+    let root = crate::confined::Confined::new(dest)?;
     let mut written = 0u64;
     let mut count = 0usize;
 
@@ -117,28 +122,31 @@ pub fn extract_zip(
         if rel.is_empty() {
             continue;
         }
-        let target = safe_join(dest, rel).map_err(|_| ExtractError::UnsafeEntry(name.clone()))?;
+        safe_join(dest, rel).map_err(|_| ExtractError::UnsafeEntry(name.clone()))?;
         if entry.is_dir() {
-            fs::create_dir_all(&target)?;
+            root.create_dirs(rel)?;
             continue;
         }
         if entry.is_symlink() {
             return Err(ExtractError::UnsafeEntry(name));
         }
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let tmp = temp_sibling(&target);
-        let mut out = fs::File::create(&tmp)?;
+        let (mut out, tmp) = root.temp_for(rel)?;
         let remaining = max_total.saturating_sub(written);
-        let n = io::copy(&mut (&mut entry).take(remaining + 1), &mut out)?;
+        let copied = io::copy(&mut (&mut entry).take(remaining + 1), &mut out);
         drop(out);
+        let n = match copied {
+            Ok(n) => n,
+            Err(e) => {
+                let _ = fs::remove_file(&tmp);
+                return Err(e.into());
+            }
+        };
         written += n;
         if written > max_total {
             let _ = fs::remove_file(&tmp);
             return Err(ExtractError::TooLarge(max_total));
         }
-        fs::rename(&tmp, &target)?;
+        root.persist(&tmp, rel)?;
         count += 1;
     }
     Ok(count)
