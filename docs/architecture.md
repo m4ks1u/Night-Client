@@ -97,17 +97,33 @@ secret is ever returned over IPC.
 `nc_core::jvmargs::parse` splits user text without a shell and validates it against an allowlist.
 The stored vector is validated again in `prepare_launch`. Memory is always set by the launcher.
 
-## Loader extension point
+## Mod loaders
 
-Loaders produce a version JSON that `inheritsFrom` a vanilla version. `nc_core::profile::merge`
-combines them: child scalars win, arguments are appended, and child libraries override parent
-libraries with the same `group:artifact[:classifier]`.
+**Install key** (`nc_core::loader::InstallKey`): `vanilla:<mc>`, `fabric:<mc>:<v>` or
+`neoforge:<mc>:<v>`. It is the download-queue target and maps to a **launch id**: `<mc>`,
+`fabric-loader-<v>-<mc>` or `neoforge-<v>`.
 
-- **Fabric:** profile JSON from Fabric Meta, merged as-is. The loader and intermediary jars carry no
-  hash in the profile, so the installer must fetch their Maven `.sha1` files (Stage 4).
-- **NeoForge:** needs installer processors to produce the patched client. See
-  [spikes/neoforge.md](spikes/neoforge.md).
-- **Forge and Quilt:** same shapes as NeoForge and Fabric respectively. Not implemented yet.
+`nc_launcher::loaders::install` dispatches on the key. Each loader installs vanilla first, then writes
+`versions/<launch id>/` with the loader JSON (which `inheritsFrom` vanilla), a hard link of the vanilla
+jar named `<launch id>.jar`, and finally `.installed`. At launch, `loaders::resolve_version` merges the
+`inheritsFrom` chain from local files with `nc_core::profile::merge`: child scalars win, arguments are
+appended, and child libraries override parent libraries with the same `group:artifact[:classifier]`.
+
+- **Fabric** (`loaders/fabric.rs`): profile from Fabric Meta. Jars without a hash use the Maven
+  `.sha1` sidecar.
+- **NeoForge** (`loaders/neoforge.rs`): runs the installer's processors natively, using
+  `nc_core::installprofile` for the model and argument resolution. Installer libraries are resolved
+  with `libraries::resolve_all`, without de-duplication, because processors need different versions of
+  the same artifact. See [spikes/neoforge.md](spikes/neoforge.md).
+- **Forge and Quilt:** not implemented. Forge uses the same install-profile format as NeoForge, and
+  Quilt the same profile shape as Fabric.
+
+## Instance game folders
+
+By default an instance's game folder is `<data>/instances/<dir_name>`. A custom folder
+(`instances.game_dir`, migration v4) is validated by `instance::validate_custom_game_dir`. Extracted
+natives always stay under `<data>/instances/<dir_name>/.natives`. Deleting an instance moves only the
+default folder to trash; a custom folder is never touched.
 
 ## Local database (`nc-store`)
 
