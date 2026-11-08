@@ -9,6 +9,7 @@ import { formatDuration, formatMemory, formatRelative } from "../lib/format";
 import { effectiveMemory, useApp, useVersionJob } from "../stores/app";
 import { InstanceJava } from "../components/JavaPicker";
 import { JvmArgsCard } from "../components/JvmArgs";
+import { GameFolder, LoaderCard } from "../components/InstanceSettings";
 import { navigate, useRouter } from "../stores/router";
 
 export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: "overview" | "log" }) {
@@ -38,7 +39,7 @@ export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: "ov
         <div className="min-w-0">
           <h1 className="truncate text-[22px] font-semibold tracking-tight">{instance.name}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-fg-muted">
-            <Badge tone="accent">Vanilla {instance.gameVersion}</Badge>
+            <Badge tone="accent">{instance.label}</Badge>
             {!instance.installed && <Badge tone="warning">Not installed</Badge>}
             <span>Last played {formatRelative(instance.lastPlayedAt).toLowerCase()}</span>
             {instance.playTimeSeconds > 0 && <span>· {formatDuration(instance.playTimeSeconds)} played</span>}
@@ -72,8 +73,9 @@ function Overview({ instance }: { instance: Instance }) {
   const system = useApp((s) => s.system);
   const upsert = useApp((s) => s.upsertInstance);
   const remove = useApp((s) => s.removeInstance);
-  const job = useVersionJob(instance.gameVersion);
-  const last = useApp((s) => s.lastFinished[instance.gameVersion]);
+  const key = instance.installKey ?? instance.gameVersion;
+  const job = useVersionJob(key);
+  const last = useApp((s) => s.lastFinished[key]);
   const installVersion = useApp((s) => s.installVersion);
   const running = useApp((s) => instance.id in s.running);
   const [error, setError] = useState<CmdError | null>(null);
@@ -132,15 +134,15 @@ function Overview({ instance }: { instance: Instance }) {
         </div>
       </Card>
 
+      {instance.loader !== "vanilla" && <LoaderCard instance={instance} disabled={running || job.state !== "idle"} />}
+
       <InstanceJava instance={instance} disabled={running} />
 
       <JvmArgsCard instance={instance} disabled={running} />
 
       <Card title="Files">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[13px] text-fg-muted">
-            Folder <code className="font-mono text-fg">instances\{instance.dirName}</code>
-          </p>
+          <GameFolder instance={instance} disabled={running} onError={setError} />
           <div className="flex gap-2">
             <Button size="sm" icon={<FolderOpen size={13} />} onClick={() => void api.openInstanceDir(instance.id).catch((e) => setError(toCmdError(e)))}>
               Open folder
@@ -149,7 +151,7 @@ function Overview({ instance }: { instance: Instance }) {
               size="sm"
               icon={<RefreshCw size={13} />}
               disabled={job.state !== "idle" || running}
-              onClick={() => void installVersion(instance.gameVersion)}
+              onClick={() => void installVersion(key)}
               title="Re-check every game file against Mojang's hashes and re-download anything missing or damaged"
             >
               {instance.installed ? "Verify files" : "Download"}

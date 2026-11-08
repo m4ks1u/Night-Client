@@ -16,7 +16,7 @@ export function Instances() {
   const filtered = useMemo(() => {
     if (instances.status !== "ready") return [];
     const q = query.trim().toLowerCase();
-    return q ? instances.data.filter((i) => i.name.toLowerCase().includes(q) || i.gameVersion.includes(q)) : instances.data;
+    return q ? instances.data.filter((i) => i.name.toLowerCase().includes(q) || i.label.toLowerCase().includes(q)) : instances.data;
   }, [instances, query]);
 
   const hasAny = instances.status === "ready" && instances.data.length > 0;
@@ -80,7 +80,7 @@ export function Instances() {
                     {i.id in running ? <Badge tone="success">Running</Badge> : !i.installed && <Badge tone="warning">Not installed</Badge>}
                   </span>
                   <span className="text-xs text-fg-faint">
-                    Vanilla {i.gameVersion} · Last played {formatRelative(i.lastPlayedAt).toLowerCase()}
+                    {i.label} · Last played {formatRelative(i.lastPlayedAt).toLowerCase()}
                     {i.playTimeSeconds > 0 && ` · ${formatDuration(i.playTimeSeconds)}`}
                   </span>
                 </span>

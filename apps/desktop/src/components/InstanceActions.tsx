@@ -6,6 +6,7 @@ import { InlineError } from "./ui";
 import { api, toCmdError, type CmdError, type Instance } from "../lib/ipc";
 import { playInstance } from "../lib/actions";
 import { PHASE_LABEL, formatBytes, fraction } from "../lib/format";
+import { labelForKey } from "../lib/keys";
 import { useApp, useVersionJob } from "../stores/app";
 
 /** Progress line for a version's active download job. */
@@ -26,7 +27,7 @@ export function JobProgress({ versionId, className = "w-72" }: { versionId: stri
           </span>
         )}
       </div>
-      <ProgressBar value={p && p.totalFiles > 0 ? fraction(p) : null} label={`Downloading ${versionId}`} />
+      <ProgressBar value={p && p.totalFiles > 0 ? fraction(p) : null} label={`Downloading ${labelForKey(versionId)}`} />
     </div>
   );
 }
@@ -35,8 +36,9 @@ export function JobProgress({ versionId, className = "w-72" }: { versionId: stri
 export function PlayButton({ instance, size = "md", showProgress = true }: { instance: Instance; size?: ButtonProps["size"]; showProgress?: boolean }) {
   const account = useApp((s) => s.account);
   const running = useApp((s) => instance.id in s.running);
-  const installError = useApp((s) => s.installErrors[instance.gameVersion]);
-  const job = useVersionJob(instance.gameVersion);
+  const key = instance.installKey ?? instance.gameVersion;
+  const installError = useApp((s) => s.installErrors[key]);
+  const job = useVersionJob(key);
   const [error, setError] = useState<CmdError | null>(null);
   const [starting, setStarting] = useState(false);
 
@@ -84,7 +86,7 @@ export function PlayButton({ instance, size = "md", showProgress = true }: { ins
   return (
     <div className="flex flex-col items-end gap-2">
       <div>{button}</div>
-      {showProgress && <JobProgress versionId={instance.gameVersion} />}
+      {showProgress && <JobProgress versionId={key} />}
       {showProgress && shownError && (
         <div className="max-w-md">
           <InlineError error={shownError} />

@@ -6,6 +6,7 @@ import { Badge, Card, Dialog, EmptyState, ErrorState, PageHeader, Skeleton } fro
 import { api, toCmdError, type CmdError, type DownloadRecord } from "../lib/ipc";
 import { formatBytes, formatDuration, formatRelative } from "../lib/format";
 import { useApp } from "../stores/app";
+import { labelForKey } from "../lib/keys";
 
 export function Downloads() {
   const queue = useApp((s) => s.queue);
@@ -43,7 +44,7 @@ export function Downloads() {
                 <li className="flex items-center gap-4 px-4 py-4">
                   <Download size={16} className="shrink-0 text-accent" />
                   <div className="min-w-0 flex-1">
-                    <p className="mb-2 text-[13px] font-medium">Minecraft {queue.active.target}</p>
+                    <p className="mb-2 text-[13px] font-medium">{labelForKey(queue.active.target)}</p>
                     <JobProgress versionId={queue.active.target} className="w-full" />
                   </div>
                   <Button size="sm" variant="danger" icon={<X size={13} />} onClick={() => void api.cancelDownload(queue.active!.id)}>
@@ -55,7 +56,7 @@ export function Downloads() {
                 <li key={j.id} className="flex items-center gap-4 px-4 py-3">
                   <span className="w-4 shrink-0 text-center text-xs tabular-nums text-fg-faint">{i + 1}</span>
                   <p className="min-w-0 flex-1 text-[13px]">
-                    Minecraft {j.target} <span className="text-xs text-fg-faint">· queued {formatRelative(j.queuedAt).toLowerCase()}</span>
+                    {labelForKey(j.target)} <span className="text-xs text-fg-faint">· queued {formatRelative(j.queuedAt).toLowerCase()}</span>
                   </p>
                   <Button size="sm" variant="ghost" icon={<X size={13} />} onClick={() => void api.cancelDownload(j.id)}>
                     Remove
@@ -146,7 +147,7 @@ function HistoryRow({ r }: { r: DownloadRecord }) {
         {icon}
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2 text-[13px] font-medium">
-            Minecraft {r.target}
+            {labelForKey(r.target)}
             {r.repair && <Badge>Verify</Badge>}
           </span>
           <span className={`text-xs ${r.status === "failed" ? "text-danger" : "text-fg-faint"}`}>

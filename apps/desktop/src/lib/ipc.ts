@@ -39,17 +39,24 @@ export type Instance = {
   name: string;
   dirName: string;
   gameVersion: string;
-  loader: "vanilla" | "fabric" | "neoforge";
+  loader: LoaderKind;
   loaderVersion: string | null;
   maxMemoryMb: number | null;
   javaPath: string | null;
   jvmArgs: string[];
+  gameDir: string | null;
+  /** Download-queue key, e.g. "fabric:1.21.1:0.17.2". */
+  installKey: string | null;
+  /** e.g. "Fabric 0.17.2 · 1.21.1" */
+  label: string;
   createdAt: number;
   lastPlayedAt: number | null;
   playTimeSeconds: number;
   installed: boolean;
   running: boolean;
 };
+export type LoaderKind = "vanilla" | "fabric" | "neoforge";
+export type LoaderVersion = { version: string; stable: boolean };
 export type Running = { instanceId: string; startedAt: number };
 
 export type Diagnostics = {
@@ -69,7 +76,7 @@ export type Diagnostics = {
   signInConfigured: boolean;
 };
 
-export type InstallPhase = "metadata" | "runtime" | "gameFiles";
+export type InstallPhase = "metadata" | "runtime" | "gameFiles" | "loader";
 export type InstallProgress = {
   jobId: number;
   id: string;
@@ -133,7 +140,8 @@ export const api = {
   openLogsDir: () => invoke<void>("open_logs_dir"),
 
   listVersions: (includeSnapshots: boolean) => invoke<VersionList>("list_versions", { includeSnapshots }),
-  installVersion: (id: string) => invoke<number>("install_version", { id }),
+  /** Queue an install/repair for an install key (see Instance.installKey). */
+  installVersion: (key: string) => invoke<number>("install_version", { id: key }),
   cancelDownload: (jobId: number) => invoke<void>("cancel_download", { jobId }),
   downloadQueue: () => invoke<QueueSnapshot>("download_queue"),
   downloadHistory: (limit: number) => invoke<DownloadRecord[]>("download_history", { limit }),
@@ -144,8 +152,12 @@ export const api = {
 
   listInstances: () => invoke<Instance[]>("list_instances"),
   getInstance: (id: string) => invoke<Instance>("get_instance", { id }),
-  createInstance: (input: { name: string; gameVersion: string; maxMemoryMb: number | null }) =>
+  createInstance: (input: { name: string; gameVersion: string; loader: LoaderKind; loaderVersion: string | null; maxMemoryMb: number | null }) =>
     invoke<Instance>("create_instance", { input }),
+  loaderVersions: (loader: LoaderKind, minecraft: string) => invoke<LoaderVersion[]>("loader_versions", { loader, minecraft }),
+  setInstanceLoaderVersion: (id: string, version: string) => invoke<Instance>("set_instance_loader_version", { id, version }),
+  setInstanceGameDir: (id: string, path: string | null) => invoke<Instance>("set_instance_game_dir", { id, path }),
+  pickFolder: () => invoke<string | null>("pick_folder"),
   updateInstance: (id: string, patch: { name?: string; maxMemoryMb?: number | null }) =>
     invoke<Instance>("update_instance", { id, patch }),
   deleteInstance: (id: string) => invoke<{ trashPath: string | null }>("delete_instance", { id }),
