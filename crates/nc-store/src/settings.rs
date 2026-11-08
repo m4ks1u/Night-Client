@@ -14,6 +14,8 @@ pub struct AppSettings {
     pub download_concurrency: u8,
     /// Hide the launcher window while the game runs.
     pub hide_on_launch: bool,
+    /// Turn animations off even when Windows animations are on.
+    pub reduce_motion: bool,
 }
 
 impl Default for AppSettings {
@@ -22,6 +24,7 @@ impl Default for AppSettings {
             default_max_memory_mb: 4096,
             download_concurrency: 8,
             hide_on_launch: false,
+            reduce_motion: false,
         }
     }
 }
