@@ -29,7 +29,7 @@ static PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
         (r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}", "${1}<redacted>"),
         // Query/form/JSON style secrets.
         (
-            r#"(?i)((?:access_token|refresh_token|id_token|code_verifier|accessToken|identityToken|RpsTicket|client_secret|code)["']?\s*[=:]\s*["']?)[^"'&\s,}]{6,}"#,
+            r#"(?i)((?:access_token|refresh_token|id_token|code_verifier|accessToken|identityToken|RpsTicket|client_secret)["']?\s*[=:]\s*["']?)[^"'&\s,}]{6,}"#,
             "${1}<redacted>",
         ),
         // `--accessToken <value>` in launch arguments (plain or Debug-formatted).
@@ -42,6 +42,12 @@ static PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     .collect()
 });
 
+/// OAuth `code=` parameters, but not as part of another name (`error_code=`).
+static OAUTH_CODE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"((?:^|[^A-Za-z0-9_])code["']?\s*[=:]\s*["']?)([^"'&\s,}]+)"#)
+        .expect("static redaction regex is valid")
+});
+
 /// Remove anything that looks like a credential from `line`.
 pub fn redact(line: &str) -> String {
     let mut out = line.to_owned();
@@ -49,6 +55,21 @@ pub fn redact(line: &str) -> String {
         if re.is_match(&out) {
             out = re.replace_all(&out, *rep).into_owned();
         }
+    }
+    if OAUTH_CODE.is_match(&out) {
+        // Authorization codes are long and contain dots, digits or capitals.
+        // Short values (`code=0`) and plain lowercase identifiers such as our
+        // own error codes (`auth_not_configured`) are kept for diagnostics.
+        out = OAUTH_CODE
+            .replace_all(&out, |c: &regex::Captures<'_>| {
+                let value = &c[2];
+                if value.len() < 6 || value.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') {
+                    c[0].to_owned()
+                } else {
+                    format!("{}<redacted>", &c[1])
+                }
+            })
+            .into_owned();
     }
     out
 }
@@ -180,6 +201,9 @@ mod tests {
             "WARN retrying download url=https://resources.download.minecraft.net/67/672de5ad attempt=0",
             "exit code=0",
             "ERROR auth: xsts: unexpected HTTP 401",
+            r#"WARN night_client_lib::commands::account: active account check failed code="auth_not_configured""#,
+            "WARN sign-in failed error_code=auth_denied",
+            "exit code=0",
         ] {
             assert_eq!(redact(line), line);
         }

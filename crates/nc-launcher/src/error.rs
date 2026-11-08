@@ -35,6 +35,10 @@ pub enum LauncherError {
     Vault(String),
     #[error("invalid JVM arguments: {0}")]
     JvmArgs(#[from] nc_core::jvmargs::JvmArgError),
+    #[error("{0}")]
+    InvalidPath(String),
+    #[error("the NeoForge installer step {0} failed")]
+    Processor(String),
     #[error("operation cancelled")]
     Cancelled,
     #[error("failed to start the game: {0}")]
@@ -61,6 +65,8 @@ impl LauncherError {
             Self::JavaIncompatible(_) => "java_incompatible",
             Self::FilesMissing(_) => "files_missing",
             Self::Vault(_) => "vault",
+            Self::InvalidPath(_) => "invalid_path",
+            Self::Processor(_) => "loader_processor",
             Self::JvmArgs(_) => "invalid_jvm_args",
         }
     }

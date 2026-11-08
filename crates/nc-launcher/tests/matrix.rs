@@ -87,6 +87,7 @@ async fn version_matrix() {
                 max_memory_mb: 2048,
                 extra_jvm_args: vec![],
                 java_override: None,
+                game_dir: None,
             },
         )
         .await

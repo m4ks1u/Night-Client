@@ -27,6 +27,89 @@ pub fn ensure_game_dir(layout: &Layout, dir_name: &str) -> Result<PathBuf, Launc
     Ok(dir)
 }
 
+/// Validate a user-chosen game directory. It must be an absolute, local or
+/// UNC path that is not a drive root, not inside Windows/Program Files/
+/// ProgramData, and not inside Night Client's managed folders (versions,
+/// libraries, assets, runtimes, cache, trash, the vault). The folder is
+/// created if missing. Returns the canonical path.
+pub fn validate_custom_game_dir(layout: &Layout, input: &str) -> Result<PathBuf, LauncherError> {
+    let invalid = |m: &str| LauncherError::InvalidPath(format!("{input}: {m}"));
+    let p = PathBuf::from(input.trim());
+    if !p.is_absolute() {
+        return Err(invalid(
+            "choose a full path, for example D:\\Minecraft\\Survival",
+        ));
+    }
+    if p.parent().is_none() {
+        return Err(invalid("a drive root cannot be a game folder"));
+    }
+    if p.components().any(|c| {
+        matches!(
+            c,
+            std::path::Component::ParentDir | std::path::Component::CurDir
+        )
+    }) {
+        return Err(invalid("the path must not contain . or .. segments"));
+    }
+    // ':' is only allowed in the drive prefix (no alternate data streams).
+    let tail = p.to_string_lossy();
+    let after_prefix = tail.get(2..).unwrap_or("");
+    if after_prefix.contains(':')
+        || tail
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '*' | '?' | '"' | '<' | '>' | '|'))
+    {
+        return Err(invalid(
+            "the path contains characters Windows does not allow",
+        ));
+    }
+    std::fs::create_dir_all(&p).map_err(|e| invalid(&e.to_string()))?;
+    let canon = std::fs::canonicalize(&p).map_err(|e| invalid(&e.to_string()))?;
+    if !canon.is_dir() {
+        return Err(invalid("not a folder"));
+    }
+
+    let mut forbidden: Vec<PathBuf> = [
+        "SystemRoot",
+        "windir",
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "ProgramW6432",
+        "ProgramData",
+    ]
+    .iter()
+    .filter_map(std::env::var_os)
+    .map(PathBuf::from)
+    .collect();
+    for sub in [
+        "versions",
+        "libraries",
+        "assets",
+        "runtimes",
+        "cache",
+        "trash",
+    ] {
+        forbidden.push(layout.root().join(sub));
+    }
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        forbidden.push(PathBuf::from(local).join("NightClient"));
+    }
+    for f in forbidden {
+        let f = std::fs::canonicalize(&f).unwrap_or(f);
+        if canon.starts_with(&f) {
+            return Err(invalid("this folder is managed by Windows or Night Client"));
+        }
+    }
+    if let Ok(root) = std::fs::canonicalize(layout.root())
+        && canon == root
+    {
+        return Err(invalid(
+            "choose a folder inside or outside the data folder, not the data folder itself",
+        ));
+    }
+    Ok(canon)
+}
+
 /// Move an instance folder to `<data>/trash/<dir>-<unix time>` instead of
 /// deleting it, so a mistaken delete can be recovered by hand.
 /// Returns the trash location, or `None` if the folder did not exist.
@@ -55,6 +138,8 @@ pub struct LaunchRequest {
     pub extra_jvm_args: Vec<String>,
     /// User-chosen Java; `None` uses the official Mojang runtime.
     pub java_override: Option<PathBuf>,
+    /// Custom game directory (already validated); `None` uses the default.
+    pub game_dir: Option<PathBuf>,
 }
 
 /// Check a Java runtime against what a version needs. Returns the `javaw.exe`
@@ -93,12 +178,18 @@ pub async fn prepare_launch(
     if !layout.installed_marker(id)?.is_file() {
         return Err(LauncherError::NotInstalled(id.clone()));
     }
-    let version: nc_core::manifest::VersionJson =
-        read_json(&layout.version_json(id)?, "version").await?;
+
+    let version = crate::loaders::resolve_version(layout, id).await?;
     let env = Environment::windows_x64();
     let libs = nc_core::libraries::resolve(&version, &env)?;
     let java_req = nc_core::java::requirement(&version);
-    let game_dir = ensure_game_dir(layout, &req.dir_name)?;
+    let game_dir = match &req.game_dir {
+        Some(d) => {
+            std::fs::create_dir_all(d).map_err(LauncherError::io(d))?;
+            d.clone()
+        }
+        None => ensure_game_dir(layout, &req.dir_name)?,
+    };
 
     let java = match &req.java_override {
         Some(p) => {
@@ -193,6 +284,35 @@ pub async fn prepare_launch(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_game_dir_validation() {
+        let root = tempfile::tempdir().unwrap();
+        let layout = Layout::new(root.path().join("data"));
+        std::fs::create_dir_all(layout.libraries_dir()).unwrap();
+        let ok = root.path().join("Games").join("Survival");
+        let canon = validate_custom_game_dir(&layout, &ok.display().to_string()).unwrap();
+        assert!(canon.is_dir());
+        // Inside the data folder but not a managed sub-folder is fine.
+        assert!(
+            validate_custom_game_dir(
+                &layout,
+                &layout.root().join("my-worlds").display().to_string()
+            )
+            .is_ok()
+        );
+        for bad in [
+            r"relative\dir".to_string(),
+            r"C:\".to_string(),
+            layout.libraries_dir().join("x").display().to_string(),
+            layout.root().display().to_string(),
+            std::env::var("SystemRoot").unwrap_or(r"C:\Windows".into()),
+            format!(r"{}\x:ads", root.path().display()),
+            format!(r"{}\..\escape", ok.display()),
+        ] {
+            assert!(validate_custom_game_dir(&layout, &bad).is_err(), "{bad}");
+        }
+    }
 
     #[test]
     fn trash_moves_folder_and_rejects_traversal() {

@@ -25,6 +25,8 @@ pub enum Phase {
     Metadata,
     Runtime,
     GameFiles,
+    /// Loader files and (NeoForge) installer processors.
+    Loader,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]

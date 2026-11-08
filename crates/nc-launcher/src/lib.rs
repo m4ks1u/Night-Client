@@ -15,6 +15,7 @@ pub mod instance;
 pub mod java;
 pub mod javadetect;
 pub mod layout;
+pub mod loaders;
 pub mod logging;
 pub mod meta;
 pub mod process;
