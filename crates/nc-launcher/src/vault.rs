@@ -79,8 +79,12 @@ impl TokenVault for DpapiVault {
             .strip_prefix(MAGIC.as_slice())
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "unknown vault format"))?;
         let plain = dpapi::unprotect(body)?;
-        let s = String::from_utf8(plain)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "vault entry is not UTF-8"))?;
+        // `from_utf8` takes ownership without copying; on failure, wipe the
+        // plaintext before returning the error.
+        let s = String::from_utf8(plain).map_err(|e| {
+            zeroize::Zeroize::zeroize(&mut e.into_bytes());
+            io::Error::new(io::ErrorKind::InvalidData, "vault entry is not UTF-8")
+        })?;
         Ok(Some(Secret::new(s)))
     }
 
