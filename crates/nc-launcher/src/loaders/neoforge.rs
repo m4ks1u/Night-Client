@@ -107,11 +107,22 @@ pub fn main_class(manifest: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+/// Upper bound for everything extracted from one installer jar. Real
+/// installers hold a few MB of data entries; this only stops a zip bomb.
+const MAX_INSTALLER_EXTRACT: u64 = 512 * 1024 * 1024;
+
 /// Extract the named installer entries (validated relative paths) to `dest`.
-fn extract_entries(jar: &Path, entries: &[String], dest: &Path) -> Result<(), LauncherError> {
+/// Fails, rather than truncating, once the total exceeds `max_total`.
+fn extract_entries(
+    jar: &Path,
+    entries: &[String],
+    dest: &Path,
+    max_total: u64,
+) -> Result<(), LauncherError> {
     let f = std::fs::File::open(jar).map_err(LauncherError::io(jar))?;
     let mut z = zip::ZipArchive::new(std::io::BufReader::new(f))
         .map_err(|e| LauncherError::Extract(e.into()))?;
+    let mut written = 0u64;
     for name in entries {
         let target = fsutil::safe_join(dest, name)?;
         if let Some(p) = target.parent() {
@@ -121,8 +132,16 @@ fn extract_entries(jar: &Path, entries: &[String], dest: &Path) -> Result<(), La
             .by_name(name)
             .map_err(|e| LauncherError::Extract(e.into()))?;
         let mut out = std::fs::File::create(&target).map_err(LauncherError::io(&target))?;
-        std::io::copy(&mut (&mut entry).take(512 * 1024 * 1024), &mut out)
+        let remaining = max_total.saturating_sub(written);
+        written += std::io::copy(&mut (&mut entry).take(remaining + 1), &mut out)
             .map_err(LauncherError::io(&target))?;
+        if written > max_total {
+            drop(out);
+            let _ = std::fs::remove_file(&target);
+            return Err(LauncherError::Extract(
+                fsutil::ExtractError::TooLarge(max_total).into(),
+            ));
+        }
     }
     Ok(())
 }
@@ -251,9 +270,11 @@ pub async fn install(
             profile.embedded_files()?,
             extracted.clone(),
         );
-        tokio::task::spawn_blocking(move || extract_entries(&inst, &entries, &dest))
-            .await
-            .map_err(|e| LauncherError::Spawn(e.to_string()))??;
+        tokio::task::spawn_blocking(move || {
+            extract_entries(&inst, &entries, &dest, MAX_INSTALLER_EXTRACT)
+        })
+        .await
+        .map_err(|e| LauncherError::Spawn(e.to_string()))??;
     }
 
     let ctx = ResolveContext {
@@ -501,5 +522,53 @@ mod tests {
             Some("net.neoforged.installertools.InstallerTools")
         );
         assert_eq!(main_class("Manifest-Version: 1.0\n"), None);
+    }
+
+    fn jar(entries: &[(&str, &[u8])]) -> tempfile::NamedTempFile {
+        use std::io::Write;
+        let f = tempfile::NamedTempFile::new().unwrap();
+        let mut w = zip::ZipWriter::new(f.reopen().unwrap());
+        for (name, data) in entries {
+            w.start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            w.write_all(data).unwrap();
+        }
+        w.finish().unwrap();
+        f
+    }
+
+    #[test]
+    fn extracts_named_entries_and_fails_instead_of_truncating() {
+        let j = jar(&[
+            ("data/client.lzma", &[7u8; 600]),
+            ("data/server.lzma", &[1u8; 600]),
+        ]);
+        let dir = tempfile::tempdir().unwrap();
+        let names = ["data/client.lzma".to_owned()];
+        super::extract_entries(j.path(), &names, dir.path(), 1 << 20).unwrap();
+        assert_eq!(
+            std::fs::read(dir.path().join("data/client.lzma"))
+                .unwrap()
+                .len(),
+            600
+        );
+        assert!(!dir.path().join("data/server.lzma").exists());
+
+        // Over the limit: an error, and no partial file left behind.
+        let out = tempfile::tempdir().unwrap();
+        let both = ["data/client.lzma".to_owned(), "data/server.lzma".to_owned()];
+        let err = super::extract_entries(j.path(), &both, out.path(), 1000).unwrap_err();
+        assert!(err.to_string().contains("extraction limit"), "{err}");
+        assert!(!out.path().join("data/server.lzma").exists());
+    }
+
+    #[test]
+    fn refuses_entry_names_that_escape_the_destination() {
+        let j = jar(&[("../evil.txt", b"x")]);
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("work");
+        let err = super::extract_entries(j.path(), &["../evil.txt".to_owned()], &sub, 1 << 20);
+        assert!(err.is_err());
+        assert!(!dir.path().join("evil.txt").exists());
     }
 }
