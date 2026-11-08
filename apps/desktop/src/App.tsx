@@ -12,6 +12,7 @@ import { Instances } from "./screens/Instances";
 import { NewInstance } from "./screens/NewInstance";
 import { InstanceDetail } from "./screens/InstanceDetail";
 import { Accounts } from "./screens/Accounts";
+import { Downloads } from "./screens/Downloads";
 import { Settings } from "./screens/Settings";
 import { Diagnostics } from "./screens/Diagnostics";
 
@@ -25,6 +26,8 @@ function Screen({ route }: { route: Route }) {
       return <NewInstance />;
     case "instance":
       return <InstanceDetail id={route.id} tab={route.tab} />;
+    case "downloads":
+      return <Downloads />;
     case "accounts":
       return <Accounts />;
     case "settings":
@@ -48,6 +51,8 @@ export default function App() {
     void s.boot();
     const subs = [
       events.installProgress((p) => useApp.getState().setProgress(p)),
+      events.downloadsQueue((q) => useApp.getState().setQueue(q)),
+      events.installFinished((f) => useApp.getState().onFinished(f)),
       events.gameStarted((id) => useApp.getState().markStarted(id)),
       events.gameLog((b) => useApp.getState().appendLogs(b.instanceId, b.lines)),
       events.gameExit((e) => {

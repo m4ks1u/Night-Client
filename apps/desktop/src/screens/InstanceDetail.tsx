@@ -6,7 +6,8 @@ import { LogView } from "../components/LogView";
 import { Badge, Card, Dialog, ErrorState, Field, InlineError, MemorySlider, Skeleton, Toggle, inputClass } from "../components/ui";
 import { api, toCmdError, type CmdError, type Instance } from "../lib/ipc";
 import { formatDuration, formatMemory, formatRelative } from "../lib/format";
-import { effectiveMemory, useApp } from "../stores/app";
+import { effectiveMemory, useApp, useVersionJob } from "../stores/app";
+import { InstanceJava } from "../components/JavaPicker";
 import { navigate, useRouter } from "../stores/router";
 
 export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: "overview" | "log" }) {
@@ -70,7 +71,8 @@ function Overview({ instance }: { instance: Instance }) {
   const system = useApp((s) => s.system);
   const upsert = useApp((s) => s.upsertInstance);
   const remove = useApp((s) => s.removeInstance);
-  const install = useApp((s) => s.install);
+  const job = useVersionJob(instance.gameVersion);
+  const last = useApp((s) => s.lastFinished[instance.gameVersion]);
   const installVersion = useApp((s) => s.installVersion);
   const running = useApp((s) => instance.id in s.running);
   const [error, setError] = useState<CmdError | null>(null);
@@ -129,6 +131,8 @@ function Overview({ instance }: { instance: Instance }) {
         </div>
       </Card>
 
+      <InstanceJava instance={instance} disabled={running} />
+
       <Card title="Files">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-[13px] text-fg-muted">
@@ -141,7 +145,7 @@ function Overview({ instance }: { instance: Instance }) {
             <Button
               size="sm"
               icon={<RefreshCw size={13} />}
-              disabled={install !== null || running}
+              disabled={job.state !== "idle" || running}
               onClick={() => void installVersion(instance.gameVersion)}
               title="Re-check every game file against Mojang's hashes and re-download anything missing or damaged"
             >
@@ -149,6 +153,13 @@ function Overview({ instance }: { instance: Instance }) {
             </Button>
           </div>
         </div>
+        {last?.status === "completed" && last.repair && job.state === "idle" && (
+          <p role="status" className={`mt-3 text-xs ${last.repairedCount > 0 ? "text-warning" : "text-success"}`}>
+            {last.repairedCount > 0
+              ? `Verified: ${last.repairedCount} damaged or missing ${last.repairedCount === 1 ? "file was" : "files were"} repaired. Details are in Downloads.`
+              : "Verified: every file matches Mojang's hashes."}
+          </p>
+        )}
         <dl className="mt-4 grid grid-cols-3 gap-4 border-t border-line pt-4 text-xs">
           <div>
             <dt className="text-fg-faint">Created</dt>

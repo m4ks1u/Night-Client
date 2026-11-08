@@ -5,6 +5,7 @@ export type Route =
   | { name: "instances" }
   | { name: "new-instance" }
   | { name: "instance"; id: string; tab?: "overview" | "log" }
+  | { name: "downloads" }
   | { name: "accounts" }
   | { name: "settings" }
   | { name: "diagnostics" };

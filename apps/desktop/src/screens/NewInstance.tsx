@@ -48,7 +48,7 @@ export function NewInstance() {
       });
       upsert(inst);
       navigate({ name: "instance", id: inst.id });
-      if (downloadNow && !inst.installed && !useApp.getState().install) void installVersion(inst.gameVersion);
+      if (downloadNow && !inst.installed) void installVersion(inst.gameVersion);
     } catch (e) {
       setError(toCmdError(e));
     } finally {

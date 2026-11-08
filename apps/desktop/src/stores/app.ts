@@ -5,9 +5,11 @@ import {
   type Account,
   type AppInfo,
   type CmdError,
+  type InstallFinished,
   type Instance,
   type InstallProgress,
   type LogLine,
+  type QueueSnapshot,
   type Settings,
   type SystemInfo,
   type VersionList,
@@ -17,11 +19,6 @@ export const MAX_LOG_LINES = 2000;
 
 type Load<T> = { status: "idle" | "loading" } | { status: "ready"; data: T } | { status: "error"; error: CmdError };
 
-type InstallState = {
-  versionId: string;
-  progress: InstallProgress | null;
-};
-
 type AppStore = {
   info: AppInfo | null;
   system: SystemInfo | null;
@@ -29,9 +26,16 @@ type AppStore = {
   account: Account | null;
   instances: Load<Instance[]>;
   versions: Record<"releases" | "all", Load<VersionList>>;
-  /** Installation in progress (only one at a time). */
-  install: InstallState | null;
+  /** Download queue mirrored from the backend. */
+  queue: QueueSnapshot;
+  /** Progress of the active download job. */
+  progress: InstallProgress | null;
+  /** Last failure per version (cleared when it is queued again). */
   installErrors: Record<string, CmdError>;
+  /** Last completed job per version (for "verified, N repaired" messages). */
+  lastFinished: Record<string, InstallFinished>;
+  /** Bumped whenever a job finishes so history views can refetch. */
+  historyVersion: number;
   /** instanceId -> unix start time */
   running: Record<string, number>;
   logs: Record<string, LogLine[]>;
@@ -44,14 +48,20 @@ type AppStore = {
   setAccount: (a: Account | null) => void;
   setSettings: (s: Settings) => void;
 
+  /** Queue an install/repair and resolve when it finishes (true = completed). */
   installVersion: (versionId: string) => Promise<boolean>;
+  setQueue: (q: QueueSnapshot) => void;
   setProgress: (p: InstallProgress) => void;
+  onFinished: (f: InstallFinished) => void;
 
   markStarted: (instanceId: string) => void;
   markExited: (instanceId: string) => void;
   appendLogs: (instanceId: string, lines: LogLine[]) => void;
   clearLogs: (instanceId: string) => void;
 };
+
+/** Promises waiting for a version's job to finish. */
+const waiters = new Map<string, ((ok: boolean) => void)[]>();
 
 export const useApp = create<AppStore>((set, get) => ({
   info: null,
@@ -60,26 +70,23 @@ export const useApp = create<AppStore>((set, get) => ({
   account: null,
   instances: { status: "idle" },
   versions: { releases: { status: "idle" }, all: { status: "idle" } },
-  install: null,
+  queue: { active: null, pending: [] },
+  progress: null,
   installErrors: {},
+  lastFinished: {},
+  historyVersion: 0,
   running: {},
   logs: {},
 
   boot: async () => {
-    const [info, system, account, running, current] = await Promise.all([
+    const [info, system, account, running, queue] = await Promise.all([
       api.appInfo(),
       api.systemInfo(),
       api.account(),
       api.runningInstances(),
-      api.currentInstall(),
+      api.downloadQueue(),
     ]);
-    set({
-      info,
-      system,
-      account,
-      running: Object.fromEntries(running.map((r) => [r.instanceId, r.startedAt])),
-      install: current ? { versionId: current, progress: null } : null,
-    });
+    set({ info, system, account, queue, running: Object.fromEntries(running.map((r) => [r.instanceId, r.startedAt])) });
     if (!info.startupError) {
       api.getSettings().then((settings) => set({ settings })).catch(() => {});
       void get().refreshInstances();
@@ -118,9 +125,7 @@ export const useApp = create<AppStore>((set, get) => ({
 
   removeInstance: (id) =>
     set((s) =>
-      s.instances.status === "ready"
-        ? { instances: { status: "ready", data: s.instances.data.filter((x) => x.id !== id) } }
-        : s,
+      s.instances.status === "ready" ? { instances: { status: "ready", data: s.instances.data.filter((x) => x.id !== id) } } : s,
     ),
 
   setAccount: (account) => set({ account }),
@@ -129,30 +134,42 @@ export const useApp = create<AppStore>((set, get) => ({
   installVersion: async (versionId) => {
     set((s) => {
       const { [versionId]: _, ...rest } = s.installErrors;
-      return { install: { versionId, progress: null }, installErrors: rest };
+      return { installErrors: rest };
     });
+    const done = new Promise<boolean>((resolve) => waiters.set(versionId, [...(waiters.get(versionId) ?? []), resolve]));
     try {
       await api.installVersion(versionId);
-      set({ install: null });
-      const markInstalled = (l: Load<VersionList>): Load<VersionList> =>
-        l.status === "ready"
-          ? { status: "ready", data: { ...l.data, versions: l.data.versions.map((v) => (v.id === versionId ? { ...v, installed: true } : v)) } }
-          : l;
-      set((s) => ({ versions: { releases: markInstalled(s.versions.releases), all: markInstalled(s.versions.all) } }));
-      void get().refreshInstances();
-      return true;
     } catch (e) {
-      const err = toCmdError(e);
-      set((s) => ({
-        install: null,
-        installErrors: err.code === "cancelled" ? s.installErrors : { ...s.installErrors, [versionId]: err },
-      }));
+      waiters.delete(versionId);
+      set((s) => ({ installErrors: { ...s.installErrors, [versionId]: toCmdError(e) } }));
       return false;
     }
+    return done;
   },
 
-  setProgress: (p) =>
-    set((s) => (s.install && s.install.versionId === p.id ? { install: { ...s.install, progress: p } } : s)),
+  setQueue: (queue) => set((s) => ({ queue, progress: queue.active && s.progress?.jobId === queue.active.id ? s.progress : null })),
+
+  setProgress: (p) => set((s) => (s.queue.active?.id === p.jobId ? { progress: p } : s)),
+
+  onFinished: (f) => {
+    for (const resolve of waiters.get(f.id) ?? []) resolve(f.status === "completed");
+    waiters.delete(f.id);
+    set((s) => {
+      const installErrors = { ...s.installErrors };
+      if (f.status === "failed") installErrors[f.id] = { code: f.code ?? "unknown", message: f.error ?? "Download failed." };
+      const markInstalled = (l: Load<VersionList>): Load<VersionList> =>
+        l.status === "ready" && f.status === "completed"
+          ? { status: "ready", data: { ...l.data, versions: l.data.versions.map((v) => (v.id === f.id ? { ...v, installed: true } : v)) } }
+          : l;
+      return {
+        installErrors,
+        lastFinished: { ...s.lastFinished, [f.id]: f },
+        historyVersion: s.historyVersion + 1,
+        versions: { releases: markInstalled(s.versions.releases), all: markInstalled(s.versions.all) },
+      };
+    });
+    void get().refreshInstances();
+  },
 
   markStarted: (id) => set((s) => ({ running: { ...s.running, [id]: Date.now() / 1000 } })),
   markExited: (id) =>
@@ -169,6 +186,18 @@ export const useApp = create<AppStore>((set, get) => ({
     }),
   clearLogs: (id) => set((s) => ({ logs: { ...s.logs, [id]: [] } })),
 }));
+
+/** Download state of one version: active (with progress), queued, or idle. */
+export function useVersionJob(versionId: string) {
+  // Two primitive selectors: zustand v5 hooks compare with Object.is, so
+  // returning a fresh object would re-render forever.
+  const jobId = useApp((s) =>
+    s.queue.active?.target === versionId ? s.queue.active.id : (s.queue.pending.find((j) => j.target === versionId)?.id ?? null),
+  );
+  const active = useApp((s) => s.queue.active?.target === versionId);
+  const state: "active" | "queued" | "idle" = active ? "active" : jobId !== null ? "queued" : "idle";
+  return { state, jobId };
+}
 
 /** Effective memory for an instance (its override or the launcher default). */
 export function effectiveMemory(i: Instance, s: Settings | null): number {
