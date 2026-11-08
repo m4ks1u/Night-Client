@@ -29,6 +29,10 @@ tracing-appender.workspace = true
 regex.workspace = true
 zeroize.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+# Already in the tree through Tauri; reads Java install locations.
+windows-registry = "0.6.1"
+
 [dev-dependencies]
 wiremock.workspace = true
 tempfile.workspace = true

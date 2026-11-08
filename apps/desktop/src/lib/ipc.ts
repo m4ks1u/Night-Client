@@ -184,7 +184,7 @@ export type JavaRuntime = {
   major: number;
   vendor: string | null;
   arch: "x64" | "x86" | "arm64" | "unknown";
-  source: "managed" | "javaHome" | "path" | "programFiles" | "minecraftLauncher" | "custom";
+  source: "managed" | "javaHome" | "path" | "programFiles" | "registry" | "minecraftLauncher" | "custom";
   compatibility: Compatibility | null;
 };
 export type LogLine = { stream: "stdout" | "stderr"; level: string | null; text: string };
