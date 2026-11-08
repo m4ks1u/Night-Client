@@ -192,3 +192,14 @@ node e2e/mod-plans.mjs ../../target/debug/night-client.exe
 Modrinth API: optional dependencies on a Fabric instance, and Fabric mods on a Quilt instance. Both
 use a throwaway profile. The Quilt network install runs with
 `NC_LOADERS=quilt cargo test --release -p nc-launcher --test loaders -- --ignored --nocapture`.
+
+## 13. Stage 10 end-to-end tests
+
+```bash
+node e2e/mods-large.mjs ../../target/debug/night-client.exe 1500
+```
+
+Writes placeholder jars into a throwaway Fabric instance, opens its Mods tab, and checks render time,
+rows in the DOM, long tasks while scrolling, and that the last mod can be toggled. The jars' hashes are
+sent to Modrinth for identification. Forge's real installs run with
+`NC_LOADERS=forge cargo test --release -p nc-launcher --test loaders -- --ignored --nocapture`.
