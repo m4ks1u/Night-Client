@@ -1,12 +1,15 @@
-//! NeoForge and Forge (1.17+): runs the installer's processors natively (no
-//! installer GUI). Both ship the same `install_profile.json` spec 1 format.
+//! NeoForge and Forge (1.12.2+): runs the installer's processors natively
+//! (no installer GUI). Both ship the same `install_profile.json` format
+//! (spec 1; Forge 1.12.2 to 1.16.5 use spec 0, which is the same shape).
 //!
 //! 1. Install vanilla, then download the official installer jar, verified
 //!    against the Maven `.sha1` sidecar.
-//! 2. Read `install_profile.json` (spec 1 only) and `version.json` from it.
+//! 2. Read `install_profile.json` (spec 0 or 1) and `version.json` from it.
 //! 3. Download every installer and version library through the verified
 //!    download engine.
-//! 4. Extract `/data/...` entries with zip-slip-safe extraction.
+//! 4. Extract `/data/...` entries with zip-slip-safe extraction, and
+//!    libraries listed without a URL from the installer's `maven/` folder,
+//!    verified against their declared SHA-1.
 //! 5. Provide Mojang mappings ourselves (verified) and skip the processor
 //!    that would download them, so processors make no unverified downloads.
 //! 6. Run each client processor as `java -cp <jar;classpath> <Main-Class>
@@ -41,12 +44,18 @@ use crate::{
 
 const PROCESSOR_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// Mojang runtime (Java 17) used for spec 0 processors when the game itself
+/// runs on Java 8. Forge computed the declared output hashes with a newer
+/// Java: Java 8u51 deflates differently, so jarsplitter's outputs (Forge
+/// 1.13.2 to 1.16.5) would never match.
+const SPEC0_PROCESSOR_RUNTIME: &str = "java-runtime-gamma";
+
 /// NeoForge and (modern) Forge ship the same installer format; they differ
 /// only in where the installer lives and how versions are named.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dist {
     NeoForge,
-    /// Forge for Minecraft 1.17 and newer (`install_profile` spec 1).
+    /// Forge for Minecraft 1.12.2 (build 2851+) and newer.
     Forge,
 }
 
@@ -162,6 +171,70 @@ pub fn main_class(manifest: &str) -> Option<String> {
 /// Upper bound for everything extracted from one installer jar. Real
 /// installers hold a few MB of data entries; this only stops a zip bomb.
 const MAX_INSTALLER_EXTRACT: u64 = 512 * 1024 * 1024;
+
+/// A library the profile lists without a download URL. Older Forge installers
+/// (spec 0) ship these inside the jar under `maven/<path>`.
+#[derive(Debug, Clone)]
+struct EmbeddedLib {
+    path: String,
+    dest: PathBuf,
+    sha1: Option<String>,
+}
+
+/// Extract URL-less libraries that the installer carries under `maven/`,
+/// verified against the SHA-1 the profile declares. Entries that are not in
+/// the jar are left alone: processors produce them (e.g. the patched client).
+/// Returns how many files were written.
+fn extract_embedded_libraries(
+    jar: &Path,
+    libs: &[EmbeddedLib],
+    max_total: u64,
+) -> Result<u64, LauncherError> {
+    let f = std::fs::File::open(jar).map_err(LauncherError::io(jar))?;
+    let mut z = zip::ZipArchive::new(std::io::BufReader::new(f))
+        .map_err(|e| LauncherError::Extract(e.into()))?;
+    let (mut written, mut count) = (0u64, 0u64);
+    for lib in libs {
+        let name = format!("maven/{}", lib.path);
+        let Ok(mut entry) = z.by_name(&name) else {
+            continue;
+        };
+        let Some(sha1) = lib.sha1.as_deref().map(str::to_ascii_lowercase) else {
+            return Err(LauncherError::Parse {
+                what: lib.path.clone(),
+                message: "embedded library has no SHA-1".into(),
+            });
+        };
+        if fsutil::sha1_file(&lib.dest).ok().as_deref() == Some(sha1.as_str()) {
+            continue;
+        }
+        if let Some(p) = lib.dest.parent() {
+            std::fs::create_dir_all(p).map_err(LauncherError::io(p))?;
+        }
+        let part = lib.dest.with_extension("part");
+        let mut out = std::fs::File::create(&part).map_err(LauncherError::io(&part))?;
+        let remaining = max_total.saturating_sub(written);
+        written += std::io::copy(&mut (&mut entry).take(remaining + 1), &mut out)
+            .map_err(LauncherError::io(&part))?;
+        drop(out);
+        if written > max_total {
+            let _ = std::fs::remove_file(&part);
+            return Err(LauncherError::Extract(fsutil::ExtractError::TooLarge(
+                max_total,
+            )));
+        }
+        if fsutil::sha1_file(&part).ok().as_deref() != Some(sha1.as_str()) {
+            let _ = std::fs::remove_file(&part);
+            return Err(LauncherError::Parse {
+                what: lib.path.clone(),
+                message: "embedded library hash mismatch".into(),
+            });
+        }
+        std::fs::rename(&part, &lib.dest).map_err(LauncherError::io(&lib.dest))?;
+        count += 1;
+    }
+    Ok(count)
+}
 
 /// Extract the named installer entries (validated relative paths) to `dest`.
 /// Fails, rather than truncating, once the total exceeds `max_total`.
@@ -297,6 +370,7 @@ pub async fn install(
 
     // 3. Libraries (installer tools + runtime libraries).
     let mut tasks = Vec::new();
+    let mut embedded = Vec::new();
     let profile_libs = VersionJson {
         libraries: profile.libraries.clone(),
         ..child.clone()
@@ -307,16 +381,31 @@ pub async fn install(
         .into_iter()
         .chain(libraries::resolve(&child, env)?)
     {
-        if let Some(url) = lib.url {
-            tasks.push(DownloadTask {
+        let dest = fsutil::safe_join(&layout.libraries_dir(), &lib.path)?;
+        match lib.url {
+            Some(url) => tasks.push(DownloadTask {
                 url,
-                dest: fsutil::safe_join(&layout.libraries_dir(), &lib.path)?,
+                dest,
                 sha1: lib.sha1,
                 size: lib.size,
-            });
+            }),
+            None => embedded.push(EmbeddedLib {
+                path: lib.path,
+                dest,
+                sha1: lib.sha1,
+            }),
         }
     }
     let files = meta.dl.fetch_all(tasks, cancel, emit).await?;
+    if !embedded.is_empty() {
+        let (inst, libs) = (installer.clone(), embedded);
+        let n = tokio::task::spawn_blocking(move || {
+            extract_embedded_libraries(&inst, &libs, MAX_INSTALLER_EXTRACT)
+        })
+        .await
+        .map_err(|e| LauncherError::Spawn(e.to_string()))??;
+        tracing::debug!(count = n, "embedded installer libraries extracted");
+    }
 
     // 4. Embedded data files.
     let extracted = work.join("data");
@@ -350,6 +439,23 @@ pub async fn install(
         .filter(|p| p.runs_on_client())
         .collect();
     let total = processors.len() as u64;
+    let processor_java = if profile.spec == 0 && !processors.is_empty() {
+        let e = on_progress.clone();
+        crate::java::ensure_runtime(
+            meta,
+            SPEC0_PROCESSOR_RUNTIME,
+            cancel,
+            std::sync::Arc::new(move |p| {
+                e(InstallProgress {
+                    phase: Phase::Runtime,
+                    progress: p,
+                })
+            }),
+        )
+        .await?
+    } else {
+        vanilla.java.clone()
+    };
     for (i, proc_) in processors.iter().enumerate() {
         if cancel.is_cancelled() {
             return Err(LauncherError::Cancelled);
@@ -398,6 +504,32 @@ pub async fn install(
             continue;
         }
 
+        // Declared outputs, handled as the official installer does: when all
+        // are already valid the processor is skipped; otherwise stale files
+        // are deleted first, because some tools (jarsplitter) keep a cache
+        // and would otherwise leave a bad output in place.
+        let outputs = proc_
+            .outputs
+            .iter()
+            .map(|(k, v)| {
+                Ok::<_, LauncherError>((
+                    PathBuf::from(resolve_arg(k, &data, &layout.libraries_dir())?),
+                    resolve_arg(v, &data, &layout.libraries_dir())?
+                        .trim_matches('\'')
+                        .to_ascii_lowercase(),
+                ))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if !outputs.is_empty() {
+            let stale = invalid_outputs(&outputs).await?;
+            if stale.is_empty() {
+                continue;
+            }
+            for p in stale {
+                let _ = tokio::fs::remove_file(&p).await;
+            }
+        }
+
         let jar = maven_path(&layout.libraries_dir(), &proc_.jar)?;
         let manifest = {
             let j = jar.clone();
@@ -424,7 +556,7 @@ pub async fn install(
             .iter()
             .map(|a| resolve_arg(a, &data, &layout.libraries_dir()))
             .collect::<Result<Vec<_>, _>>()?;
-        run_processor(&vanilla.java, &cp.join(";"), &main, &args, &work, cancel)
+        run_processor(&processor_java, &cp.join(";"), &main, &args, &work, cancel)
             .await
             .map_err(|e| match e {
                 LauncherError::Spawn(m) => {
@@ -433,21 +565,11 @@ pub async fn install(
                 other => other,
             })?;
 
-        for (k, v) in &proc_.outputs {
-            let path = PathBuf::from(resolve_arg(k, &data, &layout.libraries_dir())?);
-            let expected = resolve_arg(v, &data, &layout.libraries_dir())?
-                .trim_matches('\'')
-                .to_ascii_lowercase();
-            let p2 = path.clone();
-            let actual = tokio::task::spawn_blocking(move || fsutil::sha1_file(&p2))
-                .await
-                .map_err(|e| LauncherError::Spawn(e.to_string()))?;
-            if actual.ok().as_deref() != Some(expected.as_str()) {
-                return Err(LauncherError::Parse {
-                    what: path.display().to_string(),
-                    message: "processor output hash mismatch".into(),
-                });
-            }
+        if let Some(bad) = invalid_outputs(&outputs).await?.into_iter().next() {
+            return Err(LauncherError::Parse {
+                what: bad.display().to_string(),
+                message: "processor output hash mismatch".into(),
+            });
         }
     }
     on_progress(InstallProgress {
@@ -465,6 +587,14 @@ pub async fn install(
         return Err(LauncherError::FilesMissing(format!(
             "patched client {patched}"
         )));
+    }
+    // Every runtime library must now exist: downloaded, taken from the
+    // installer, or written by a processor.
+    for lib in libraries::resolve(&child, env)? {
+        let p = fsutil::safe_join(&layout.libraries_dir(), &lib.path)?;
+        if !p.is_file() {
+            return Err(LauncherError::FilesMissing(format!("library {}", lib.name)));
+        }
     }
 
     super::finish(layout, &id, &version_bytes, &vanilla.client_jar).await?;
@@ -497,6 +627,19 @@ pub async fn install(
                 0
             },
     })
+}
+
+/// Paths among `outputs` that are missing or whose SHA-1 is not the expected one.
+async fn invalid_outputs(outputs: &[(PathBuf, String)]) -> Result<Vec<PathBuf>, LauncherError> {
+    let list = outputs.to_vec();
+    tokio::task::spawn_blocking(move || {
+        list.into_iter()
+            .filter(|(p, sha)| fsutil::sha1_file(p).ok().as_deref() != Some(sha.as_str()))
+            .map(|(p, _)| p)
+            .collect()
+    })
+    .await
+    .map_err(|e| LauncherError::Spawn(e.to_string()))
 }
 
 /// Run one processor; on failure, return the last lines of its output.
@@ -616,6 +759,79 @@ mod tests {
         let err = super::extract_entries(j.path(), &both, out.path(), 1000).unwrap_err();
         assert!(err.to_string().contains("extraction limit"), "{err}");
         assert!(!out.path().join("data/server.lzma").exists());
+    }
+
+    #[test]
+    fn extracts_embedded_libraries_verified_and_skips_processor_outputs() {
+        use super::{EmbeddedLib, extract_embedded_libraries};
+        let body = b"forge universal";
+        let sha = {
+            let t = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(t.path(), body).unwrap();
+            crate::fsutil::sha1_file(t.path()).unwrap()
+        };
+        let j = jar(&[("maven/net/f/forge/1/forge-1-universal.jar", body)]);
+        let dir = tempfile::tempdir().unwrap();
+        let lib = |path: &str, sha1: Option<&str>| EmbeddedLib {
+            path: path.into(),
+            dest: dir.path().join(path),
+            sha1: sha1.map(str::to_owned),
+        };
+        let uni = lib("net/f/forge/1/forge-1-universal.jar", Some(&sha));
+        // Not in the jar: a processor writes it later, so it is skipped.
+        let client = lib("net/f/forge/1/forge-1-client.jar", Some(&sha));
+        let libs = [uni.clone(), client.clone()];
+        assert_eq!(
+            extract_embedded_libraries(j.path(), &libs, 1 << 20).unwrap(),
+            1
+        );
+        assert_eq!(std::fs::read(&uni.dest).unwrap(), body);
+        assert!(!client.dest.exists());
+        // Already present and valid: nothing rewritten.
+        assert_eq!(
+            extract_embedded_libraries(j.path(), &libs, 1 << 20).unwrap(),
+            0
+        );
+
+        // Wrong declared hash: refused, and nothing left behind.
+        std::fs::remove_file(&uni.dest).unwrap();
+        let bad = lib(&uni.path, Some("0000000000000000000000000000000000000000"));
+        let err =
+            extract_embedded_libraries(j.path(), std::slice::from_ref(&bad), 1 << 20).unwrap_err();
+        assert!(err.to_string().contains("hash mismatch"), "{err}");
+        assert!(!bad.dest.exists() && !bad.dest.with_extension("part").exists());
+        // No declared hash: refused.
+        assert!(extract_embedded_libraries(j.path(), &[lib(&uni.path, None)], 1 << 20).is_err());
+        // Over the size limit: refused.
+        assert!(extract_embedded_libraries(j.path(), &[uni], 4).is_err());
+    }
+
+    #[tokio::test]
+    async fn reports_missing_and_stale_processor_outputs() {
+        let dir = tempfile::tempdir().unwrap();
+        let (good, stale, missing) = (
+            dir.path().join("good.jar"),
+            dir.path().join("stale.jar"),
+            dir.path().join("missing.jar"),
+        );
+        std::fs::write(&good, b"a").unwrap();
+        std::fs::write(&stale, b"b").unwrap();
+        let sha_a = crate::fsutil::sha1_file(&good).unwrap();
+        let outputs = [
+            (good.clone(), sha_a.clone()),
+            (stale.clone(), sha_a.clone()),
+            (missing.clone(), sha_a),
+        ];
+        assert_eq!(
+            super::invalid_outputs(&outputs).await.unwrap(),
+            [stale, missing]
+        );
+        assert!(
+            super::invalid_outputs(&outputs[..1])
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

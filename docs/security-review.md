@@ -52,6 +52,10 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
   renamed.
 - **NeoForge installer entries:** only the named entries are extracted, through `safe_join`. Since
   Stage 7 a 512 MiB total cap fails with an error instead of silently truncating.
+- **Libraries embedded in Forge installers** (Stage 11, spec 0): only `maven/<path>` for a library the
+  profile lists without a URL, written to a `.part` file inside the libraries folder and renamed only
+  after its SHA-1 matches the declared one; a library without a declared hash is refused. Covered by
+  `extracts_embedded_libraries_verified_and_skips_processor_outputs`.
 - **Mod jars:** inspected read-only, with 256 KiB per metadata file. Nothing is extracted or executed.
 - Tested by `extract_rejects_zip_slip`, `extract_enforces_size_cap`,
   `extracts_named_entries_and_fails_instead_of_truncating` and
@@ -107,6 +111,8 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
 - **Forge** (Stage 10) runs Forge's installer processors with the same safeguards as NeoForge:
   verified installer and libraries, Mojang mappings supplied by the launcher, output hashes checked.
   Integrity is checked against `maven.minecraftforge.net` SHA-1 sidecars, not a publisher signature.
+  Stage 11 extends this to Forge 1.12.2 to 1.16.5. Their embedded Forge jars are trusted as far as the
+  verified installer that carries them.
 - **Quilt** (Stage 9) libraries are checked against the Maven `.sha1` sidecars on `maven.quiltmc.org`
   and `maven.fabricmc.net`, as for Fabric: integrity in transit, not a publisher signature.
 - **Custom game folders may be on network shares.** That is data only, but mods placed there are run

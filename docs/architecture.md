@@ -132,8 +132,12 @@ appended, and child libraries override parent libraries with the same `group:art
 - **NeoForge and Forge** (`loaders/neoforge.rs`, `Dist`): runs the installer's processors natively,
   using `nc_core::installprofile` for the model and argument resolution. Installer libraries are resolved
   with `libraries::resolve_all`, without de-duplication, because processors need different versions of
-  the same artifact. Forge is offered from Minecraft 1.17, where its installer uses the same
-  `install_profile` spec 1; older Forge installers (spec 0) are not supported. See
+  the same artifact. Forge 1.17+ installers use the same
+  `install_profile` spec 1. Forge 1.12.2 (build 14.23.5.2851+) to 1.16.5 use spec 0, which has the
+  same shape, but lists the Forge jars without a URL and ships them under `maven/` in the installer;
+  those are extracted and checked against the SHA-1 the profile declares. After the processors run,
+  every runtime library must exist. Older 1.12.2 builds and earlier versions use the legacy installer
+  format and are not offered. See
   [spikes/neoforge.md](spikes/neoforge.md).
 
 ## Modrinth

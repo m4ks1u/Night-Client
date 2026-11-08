@@ -72,7 +72,7 @@ export function LoaderVersionSelect({ loader, minecraft, value, onChange, id }: 
   if (list.length === 0) {
     return (
       <p className="rounded-md border border-line bg-surface-2 px-3 py-2 text-xs text-fg-muted">
-        {LOADER_NAME[loader]} isn't available for Minecraft {minecraft}{loader === "forge" ? " in Night Client (Forge is supported from 1.17)" : ""}. Choose another version or loader.
+        {LOADER_NAME[loader]} isn't available for Minecraft {minecraft}{loader === "forge" ? " in Night Client (Forge is supported from 1.12.2)" : ""}. Choose another version or loader.
       </p>
     );
   }

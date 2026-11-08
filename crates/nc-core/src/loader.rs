@@ -184,20 +184,26 @@ pub fn neoforge_versions_for<'a>(
     v
 }
 
-/// Forge's installer uses the supported `install_profile` spec 1 from
-/// Minecraft 1.17 on; older Forge installers are spec 0.
+/// Forge versions Night Client can install: those whose installer uses
+/// `install_profile` spec 0 or 1. That is every Forge for Minecraft 1.13 and
+/// newer, and 1.12.2 from build 14.23.5.2851 (older 1.12.2 builds and
+/// earlier versions use the legacy installer format).
 pub fn forge_supported(minecraft: &str) -> bool {
     let mut parts = minecraft.split('.');
     match (parts.next(), parts.next()) {
-        (Some("1"), Some(minor)) => minor.parse::<u32>().is_ok_and(|m| m >= 17),
+        (Some("1"), Some("12")) => minecraft == "1.12.2",
+        (Some("1"), Some(minor)) => minor.parse::<u32>().is_ok_and(|m| m >= 13),
         // Year-based versions (26.x) are all newer.
         (Some(year), Some(_)) => year.len() == 2 && year.parse::<u32>().is_ok_and(|y| y >= 25),
         _ => false,
     }
 }
 
+/// The first Forge 1.12.2 build shipped with the current installer format.
+pub const FORGE_1_12_2_FIRST: &str = "14.23.5.2851";
+
 /// Forge versions for `minecraft` from Maven's `<mc>-<forge>` list, without
-/// the prefix, newest first. Empty for versions whose installer is not spec 1.
+/// the prefix, newest first. Empty for versions Night Client can't install.
 pub fn forge_versions_for<'a>(
     minecraft: &str,
     all: impl IntoIterator<Item = &'a str>,
@@ -214,6 +220,7 @@ pub fn forge_versions_for<'a>(
                 && rest
                     .split('.')
                     .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+                && (minecraft != "1.12.2" || version_cmp(rest, FORGE_1_12_2_FIRST).is_ge())
         })
         .map(str::to_owned)
         .collect();
@@ -337,6 +344,10 @@ mod tests {
             "1.20.1-47.1.0-pre1",
             "1.21.1-52.1.21",
             "1.16.5-36.2.42",
+            "1.12.2-14.23.5.2860",
+            "1.12.2-14.23.5.2851",
+            "1.12.2-14.23.5.2847",
+            "1.11.2-13.20.1.2588",
             "1.7.10-10.13.4.1614-1.7.10",
         ];
         assert_eq!(
@@ -344,12 +355,19 @@ mod tests {
             ["47.4.29", "47.4.5", "47.4.4"],
             "sorted, exact game version, no odd suffixes"
         );
+        assert_eq!(forge_versions_for("1.16.5", all), ["36.2.42"], "spec 0");
+        assert_eq!(
+            forge_versions_for("1.12.2", all),
+            ["14.23.5.2860", "14.23.5.2851"],
+            "legacy-format 1.12.2 installers are left out"
+        );
+        assert!(forge_versions_for("1.11.2", all).is_empty());
+        assert!(forge_versions_for("1.7.10", all).is_empty());
         assert!(
-            forge_versions_for("1.16.5", all).is_empty(),
-            "spec 0 installers"
+            forge_supported("1.13.2") && forge_supported("1.16.5") && forge_supported("1.12.2")
         );
         assert!(forge_supported("1.17.1") && forge_supported("1.21") && forge_supported("26.3"));
-        assert!(!forge_supported("1.16.5") && !forge_supported("1.12.2") && !forge_supported("x"));
+        assert!(!forge_supported("1.12.1") && !forge_supported("1.11.2") && !forge_supported("x"));
     }
 
     #[test]

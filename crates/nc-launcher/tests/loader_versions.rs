@@ -159,11 +159,11 @@ async fn quilt_versions_are_sorted_newest_first() {
 }
 
 #[tokio::test]
-async fn forge_versions_strip_the_game_version_and_skip_old_installers() {
+async fn forge_versions_strip_the_game_version_and_skip_legacy_installers() {
     let s = MockServer::start().await;
     let xml = "<metadata><versioning><versions>\
         <version>1.20.1-47.4.5</version><version>1.20.1-47.4.29</version>\
-        <version>1.16.5-36.2.42</version><version>1.21.1-52.1.21</version></versions></versioning></metadata>";
+        <version>1.16.5-36.2.42</version><version>1.21.1-52.1.21</version>\n        <version>1.12.2-14.23.5.2847</version><version>1.12.2-14.23.5.2860</version>\n        <version>1.11.2-13.20.1.2588</version></versions></versioning></metadata>";
     Mock::given(path("/net/minecraftforge/forge/maven-metadata.xml"))
         .respond_with(ResponseTemplate::new(200).set_body_string(xml))
         .mount(&s)
@@ -176,11 +176,30 @@ async fn forge_versions_strip_the_game_version_and_skip_old_installers() {
         .unwrap();
     let names: Vec<_> = v.iter().map(|x| x.version.as_str()).collect();
     assert_eq!(names, ["47.4.29", "47.4.5"]);
+    let names =
+        |v: Vec<loaders::LoaderVersion>| v.into_iter().map(|x| x.version).collect::<Vec<_>>();
+    assert_eq!(
+        names(
+            loaders::versions(&m, LoaderKind::Forge, "1.16.5", &c)
+                .await
+                .unwrap()
+        ),
+        ["36.2.42"],
+        "spec 0 installers are offered"
+    );
+    assert_eq!(
+        names(
+            loaders::versions(&m, LoaderKind::Forge, "1.12.2", &c)
+                .await
+                .unwrap()
+        ),
+        ["14.23.5.2860"],
+        "1.12.2 builds before 2851 use the legacy installer"
+    );
     assert!(
-        loaders::versions(&m, LoaderKind::Forge, "1.16.5", &c)
+        loaders::versions(&m, LoaderKind::Forge, "1.11.2", &c)
             .await
             .unwrap()
-            .is_empty(),
-        "spec 0 installers are not offered"
+            .is_empty()
     );
 }

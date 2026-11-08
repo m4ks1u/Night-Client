@@ -88,8 +88,13 @@ try {
   const forge = await instance(d, "forge", "1.20.1");
   const fp = ok(await d.inv("mod_install_plan", { instanceId: forge.id, projectId: "jei" }), "plan jei on forge");
   r.check("Forge 1.20.1 instance plans a Forge mod (JEI)", fp.install[0]?.version.project_id === "u6dRKJwZ" && fp.install[0].version.loaders?.includes("forge"), JSON.stringify(fp.install[0]?.version.loaders));
-  const old = ok(await d.inv("loader_versions", { loader: "forge", minecraft: "1.16.5" }), "forge 1.16.5");
-  r.check("Forge before 1.17 is not offered", old.length === 0);
+  const f165 = ok(await d.inv("loader_versions", { loader: "forge", minecraft: "1.16.5" }), "forge 1.16.5");
+  r.check("Forge 1.16.5 is offered (spec 0 installer)", f165.length > 0 && f165[0].version.startsWith("36."), JSON.stringify(f165.slice(0, 2)));
+  const f1122 = ok(await d.inv("loader_versions", { loader: "forge", minecraft: "1.12.2" }), "forge 1.12.2");
+  const build = (v) => Number(v.split(".")[3]);
+  r.check("Forge 1.12.2 lists only builds 2851 and newer", f1122.length > 0 && f1122.every((v) => v.version.startsWith("14.23.5.") && build(v.version) >= 2851), JSON.stringify(f1122.slice(-2)));
+  const f1112 = ok(await d.inv("loader_versions", { loader: "forge", minecraft: "1.11.2" }), "forge 1.11.2");
+  r.check("Forge 1.11.2 is not offered", f1112.length === 0);
 
   for (const i of [fab, quilt, forge]) ok(await d.inv("delete_instance", { id: i.id }), "delete");
   const errs = await d.errors();

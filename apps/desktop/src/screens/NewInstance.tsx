@@ -140,7 +140,7 @@ export function NewInstance() {
                       ? "Fork of Fabric. Runs most Fabric mods as well as Quilt mods."
                       : loader === "neoforge"
                         ? "Successor to Forge, used by many large content mods."
-                        : "The original mod loader. Night Client supports it for Minecraft 1.17 and newer."}
+                        : "The original mod loader. Night Client supports it for Minecraft 1.12.2 and newer."}
               </p>
             </div>
 

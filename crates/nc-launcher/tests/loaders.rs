@@ -57,6 +57,10 @@ async fn loader_matrix() {
         (LoaderKind::Quilt, "26.3"),
         (LoaderKind::NeoForge, "1.21.1"),
         (LoaderKind::NeoForge, "26.3"),
+        // Spec 0 installers (libraries embedded under maven/; 1.12.2 has no processors).
+        (LoaderKind::Forge, "1.12.2"),
+        (LoaderKind::Forge, "1.13.2"),
+        (LoaderKind::Forge, "1.16.5"),
         (LoaderKind::Forge, "1.20.1"),
         (LoaderKind::Forge, "1.21.1"),
         (LoaderKind::Forge, "26.3"),
@@ -140,11 +144,13 @@ async fn loader_matrix() {
         let mut note = String::new();
         if matches!(kind, LoaderKind::NeoForge | LoaderKind::Forge) {
             // NeoForge 20.x/21.x: neoforge-<v>-client.jar; 26.x: minecraft-client-patched-<v>.jar.
-            // Forge: forge-<mc>-<v>-client.jar.
+            // Forge: forge-<mc>-<v>-client.jar; 1.12.2 is not patched at install,
+            // so its embedded forge-<mc>-<v>.jar is checked instead.
             let candidates = [
                 format!(
-                    "net/minecraftforge/forge/{mc}-{0}/forge-{mc}-{0}-client.jar",
-                    lv.version
+                    "net/minecraftforge/forge/{mc}-{0}/forge-{mc}-{0}{1}.jar",
+                    lv.version,
+                    if mc == "1.12.2" { "" } else { "-client" }
                 ),
                 format!(
                     "net/neoforged/neoforge/{0}/neoforge-{0}-client.jar",

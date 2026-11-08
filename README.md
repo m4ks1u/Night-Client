@@ -13,7 +13,7 @@ downloaded from official Mojang servers and verified against Mojang's published 
 ## Highlights
 
 - Official Microsoft sign-in (OAuth 2.0 + PKCE in your browser). No passwords, no offline/cracked mode.
-- Vanilla, Fabric, Quilt, NeoForge and Forge (Minecraft 1.17 and newer) instances, each with its own game directory.
+- Vanilla, Fabric, Quilt, NeoForge and Forge (Minecraft 1.12.2 and newer) instances, each with its own game directory.
 - Official Mojang Java runtimes installed automatically for each version.
 - Modrinth mod discovery with dependency resolution and update checks.
 - Verified, resumable, cancellable downloads that never freeze the UI.

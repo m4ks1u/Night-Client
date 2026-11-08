@@ -1,4 +1,6 @@
-//! Forge-family `install_profile.json` (spec 1), as used by NeoForge.
+//! Forge-family `install_profile.json`: spec 1 (NeoForge, Forge 1.17+) and
+//! spec 0 (Forge 1.12.2 to 1.16.5), which share the same data, processor and
+//! library format.
 //!
 //! The installer jar declares data values and a list of processors (Java
 //! programs) that build the patched game jar. This module only models the
@@ -13,7 +15,7 @@ use serde::Deserialize;
 
 use crate::{CoreError, manifest::Library, maven::MavenCoord, paths::validate_relative};
 
-pub const SUPPORTED_SPEC: u32 = 1;
+pub const SUPPORTED_SPECS: [u32; 2] = [0, 1];
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct InstallProfile {
@@ -78,12 +80,12 @@ pub struct ResolveContext<'a> {
 
 impl InstallProfile {
     pub fn check_supported(&self) -> Result<(), CoreError> {
-        if self.spec == SUPPORTED_SPEC {
+        if SUPPORTED_SPECS.contains(&self.spec) {
             Ok(())
         } else {
             Err(CoreError::MissingField {
                 version: format!("install_profile spec {}", self.spec),
-                field: "supported spec (1)",
+                field: "supported spec (0 or 1)",
             })
         }
     }
@@ -259,6 +261,8 @@ mod tests {
         );
         assert!(p.embedded_files().is_err());
         assert!(p.client_data(&ctx(libs, libs, libs)).is_err());
+        p.spec = 0;
+        p.check_supported().unwrap();
         p.spec = 2;
         assert!(p.check_supported().is_err());
     }
