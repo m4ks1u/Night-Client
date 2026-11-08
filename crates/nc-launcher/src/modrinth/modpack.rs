@@ -92,6 +92,7 @@ pub async fn fetch_pack(
             dest: dest.clone(),
             sha1: Some(sha1),
             size: (file.size > 0).then_some(file.size),
+            root: None,
         }],
         cancel,
         |_| {},
@@ -182,17 +183,19 @@ pub(crate) async fn download_confined(
             dest: dest.clone(),
             sha1: Some(f.sha1.clone()),
             size: Some(f.size),
+            root: Some(root.clone()),
         });
         checks.push((dest, f.sha512.clone()));
     }
     let summary = dl.fetch_all(tasks, cancel, on_progress).await?;
+    let r = root.clone();
     let bad = tokio::task::spawn_blocking(move || {
         checks
             .into_iter()
             .find_map(|(p, want)| match sha512_file(&p) {
                 Ok(got) if got.eq_ignore_ascii_case(&want) => None,
                 _ => {
-                    let _ = std::fs::remove_file(&p);
+                    r.remove_temp(&p);
                     Some(p)
                 }
             })
@@ -308,12 +311,12 @@ pub(crate) fn copy_overrides(
         match copied {
             Ok(n) => written += n,
             Err(e) => {
-                let _ = std::fs::remove_file(&part);
+                root.remove_temp(&part);
                 return Err(LauncherError::io(&part)(e));
             }
         }
         if written > max_total {
-            let _ = std::fs::remove_file(&part);
+            root.remove_temp(&part);
             return Err(LauncherError::Extract(ExtractError::TooLarge(max_total)));
         }
         root.persist(&part, &target)

@@ -34,7 +34,7 @@ use std::{
 use nc_core::paths::validate_relative;
 
 /// A root folder that writes are confined to.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Confined {
     root: PathBuf,
     /// The root with links resolved, for [`Confined::verify`].
@@ -186,16 +186,17 @@ impl Confined {
             .open(&tmp)?;
         if let Err(e) = self.verify(&tmp) {
             drop(f);
-            let _ = fs::remove_file(&tmp);
+            self.remove_temp(&tmp);
             return Err(e);
         }
         Ok((f, tmp))
     }
 
-    /// Rename `tmp` onto `rel`, checking the destination again first. The
-    /// temporary file is removed on failure.
+    /// Rename `tmp` onto `rel` (replacing it), checking the destination again
+    /// first. The temporary file is removed on failure, when that is safe.
     pub fn persist(&self, tmp: &Path, rel: &str) -> io::Result<PathBuf> {
         let done = (|| {
+            self.check(tmp)?;
             let target = self.path(rel)?;
             if let Some(parent) = target.parent() {
                 self.verify(parent)?;
@@ -204,7 +205,7 @@ impl Confined {
             Ok(target)
         })();
         if done.is_err() {
-            let _ = fs::remove_file(tmp);
+            self.remove_temp(tmp);
         }
         done
     }
@@ -215,23 +216,128 @@ impl Confined {
         let written = f.write_all(bytes).and_then(|()| f.sync_all());
         drop(f);
         if let Err(e) = written {
-            let _ = fs::remove_file(&tmp);
+            self.remove_temp(&tmp);
             return Err(e);
         }
         self.persist(&tmp, rel)
     }
 
     /// Rename `from` to `to`, both inside the root and checked. `to`'s
-    /// folder must exist.
+    /// folder must exist. **Never replaces** an existing `to`: that fails
+    /// atomically instead (no check-then-rename window).
     pub fn rename(&self, from: &str, to: &str) -> io::Result<()> {
         let a = self.path(from)?;
         let b = self.path(to)?;
         for p in [a.parent(), b.parent()].into_iter().flatten() {
             self.verify(p)?;
         }
-        fs::rename(&a, &b)
+        rename_noreplace(&a, &b)
     }
 
+    /// `abs` relative to the root, `/`-separated. Fails for a path outside
+    /// the root (as text) or with `..`/prefix components.
+    pub fn rel_of(&self, abs: &Path) -> io::Result<String> {
+        let rest = abs.strip_prefix(&self.root).map_err(|_| outside(abs))?;
+        let mut segs = Vec::new();
+        for c in rest.components() {
+            match c {
+                std::path::Component::Normal(s) => {
+                    segs.push(s.to_str().ok_or_else(|| outside(abs))?.to_owned())
+                }
+                _ => return Err(outside(abs)),
+            }
+        }
+        if segs.is_empty() {
+            return Err(outside(abs));
+        }
+        Ok(segs.join("/"))
+    }
+
+    /// Check an absolute path below the root as [`Confined::path`] does, and
+    /// that its folder, when it exists, still resolves inside the root.
+    pub fn check(&self, abs: &Path) -> io::Result<()> {
+        let p = self.path(&self.rel_of(abs)?)?;
+        if let Some(parent) = p.parent()
+            && lstat(parent)?.is_some()
+        {
+            self.verify(parent)?;
+        }
+        Ok(())
+    }
+
+    /// Remove a temporary file this code created, **only** when its path is
+    /// still trusted: no link on the way and the folder still inside the
+    /// root. Otherwise it is left where it is (and logged): after a folder
+    /// was swapped for a junction, the same path names someone else's file.
+    /// Returns whether it was removed.
+    pub fn remove_temp(&self, abs: &Path) -> bool {
+        match self.check(abs) {
+            Ok(()) => fs::remove_file(abs).is_ok(),
+            Err(e) => {
+                tracing::warn!(path = %abs.display(), error = %e, "left a temporary file in place: its folder is no longer trusted");
+                false
+            }
+        }
+    }
+}
+
+/// Rename without ever replacing an existing destination, atomically.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn rename_noreplace(from: &Path, to: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn MoveFileExW(existing: *const u16, new: *const u16, flags: u32) -> i32;
+    }
+
+    let wide = |p: &Path| -> Vec<u16> {
+        verbatim(p)
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect()
+    };
+    let (a, b) = (wide(from), wide(to));
+    // SAFETY: both are NUL-terminated UTF-16 strings that outlive the call.
+    // Flags 0: no MOVEFILE_REPLACE_EXISTING (fails if `to` exists) and no
+    // MOVEFILE_COPY_ALLOWED (same volume only, so it stays a rename).
+    let ok = unsafe { MoveFileExW(a.as_ptr(), b.as_ptr(), 0) };
+    if ok == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// An absolute path in `\\?\` form, so long paths work with the raw API.
+#[cfg(windows)]
+fn verbatim(p: &Path) -> PathBuf {
+    let s = p.as_os_str().to_string_lossy();
+    let plain = p.is_absolute()
+        && !s.starts_with(r"\\")
+        && !p.components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )
+        });
+    if plain {
+        PathBuf::from(format!(r"\\?\{}", s.replace('/', r"\")))
+    } else {
+        p.to_owned()
+    }
+}
+
+/// Rename without ever replacing an existing destination: a hard link fails
+/// when `to` exists; then the old name goes.
+#[cfg(not(windows))]
+pub fn rename_noreplace(from: &Path, to: &Path) -> io::Result<()> {
+    fs::hard_link(from, to)?;
+    fs::remove_file(from)
+}
+
+impl Confined {
     /// The real on-disk name of `rel`'s first component, when it exists. On
     /// Windows this resolves 8.3 short names (`NC-UPD~1`) to the long name,
     /// so reserved folders can't be reached through an alias.
@@ -337,10 +443,61 @@ mod tests {
         let moved = root.path().join("cfg-real");
         fs::rename(root.path().join("cfg"), &moved).unwrap();
         make_junction(&root.path().join("cfg"), outside.path());
-        fs::write(outside.path().join(tmp.file_name().unwrap()), b"t").unwrap();
+        let sentinel = outside.path().join(tmp.file_name().unwrap());
+        fs::write(&sentinel, b"external sentinel").unwrap();
         assert!(c.persist(&tmp, "cfg/x.txt").is_err());
         assert!(!outside.path().join("x.txt").exists());
+        // Re-review RR-002: the failed persist must not clean up through the
+        // junction, deleting the outside file that now has the temp's name.
+        assert_eq!(fs::read(&sentinel).unwrap(), b"external sentinel");
+        assert!(!c.remove_temp(&tmp));
+        assert_eq!(fs::read(&sentinel).unwrap(), b"external sentinel");
+        // The real temporary file is still in the moved folder, untouched.
+        assert!(moved.join(tmp.file_name().unwrap()).exists());
         fs::remove_dir(root.path().join("cfg")).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_failed_write_never_cleans_up_through_a_swapped_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let c = Confined::new(root.path()).unwrap();
+        // Any write whose folder is a junction is refused before a temp file
+        // exists, so nothing outside can be named by a cleanup.
+        make_junction(&root.path().join("cfg"), outside.path());
+        fs::write(outside.path().join("x.txt"), b"keep").unwrap();
+        assert!(c.write("cfg/x.txt", b"x").is_err());
+        assert!(c.temp_for("cfg/x.txt").is_err());
+        assert!(!c.remove_temp(&root.path().join("cfg/x.txt")));
+        assert_eq!(fs::read(outside.path().join("x.txt")).unwrap(), b"keep");
+        assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 1);
+        fs::remove_dir(root.path().join("cfg")).unwrap();
+    }
+
+    #[test]
+    fn rename_never_replaces_and_paths_are_checked() {
+        let d = tempfile::tempdir().unwrap();
+        let c = Confined::new(d.path()).unwrap();
+        c.write("a.txt", b"a").unwrap();
+        c.write("b.txt", b"b").unwrap();
+        let e = c.rename("a.txt", "b.txt").unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::AlreadyExists, "{e}");
+        assert_eq!(fs::read(d.path().join("b.txt")).unwrap(), b"b");
+        assert_eq!(fs::read(d.path().join("a.txt")).unwrap(), b"a");
+        c.rename("a.txt", "c.txt").unwrap();
+        assert!(!d.path().join("a.txt").exists());
+        // A long path still works with the raw API.
+        let deep = format!("{}/f.txt", ["segment-of-thirty-characters-x"; 9].join("/"));
+        c.write(&deep, b"x").unwrap();
+        c.rename(&deep, &format!("{deep}.moved")).unwrap();
+        // Absolute paths: inside is fine, outside or `..` is refused.
+        assert_eq!(c.rel_of(&d.path().join("x/y.txt")).unwrap(), "x/y.txt");
+        assert!(c.rel_of(Path::new("C:/elsewhere/x")).is_err());
+        assert!(c.rel_of(&d.path().join("x/../../y")).is_err());
+        assert!(c.check(&d.path().join("c.txt")).is_ok());
+        assert!(!c.remove_temp(Path::new("C:/elsewhere/x.tmp")));
+        assert!(c.remove_temp(&d.path().join("c.txt")));
     }
 
     #[test]

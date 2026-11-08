@@ -50,6 +50,10 @@ pub fn running_instances(state: State<'_, AppState>) -> Vec<Running> {
 pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<()> {
     validate_instance_id(&id)?;
     super::ensure_not_relocating(&state)?;
+    // Hold the instance's slot first: no modpack update can start or finish
+    // while the launch reads the instance and prepares from it. Released when
+    // the game is registered below (or on any error).
+    let slot = super::modpacks::reserve(&state, &id)?;
     let lookup = id.clone();
     let (instance, settings) = with_db(&state, move |db| {
         Ok((db.get_instance(&lookup)?, db.app_settings()))
@@ -80,10 +84,8 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
             "this version is still being installed",
         ));
     }
-    // No modpack update may run while the game starts, and one that was
-    // interrupted is finished or undone before the game reads the files.
-    // The slot is held until the game is registered below.
-    let slot = super::modpacks::reserve(&state, &id)?;
+    // A modpack update that was interrupted is finished or undone before the
+    // game reads the files (the slot is held, so none is running).
     let game_dir = match &instance.game_dir {
         Some(d) => std::path::PathBuf::from(d),
         None => nc_launcher::instance::ensure_game_dir(&state.layout, &instance.dir_name)?,

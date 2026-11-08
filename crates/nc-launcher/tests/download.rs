@@ -50,6 +50,7 @@ fn task(server: &MockServer, p: &str, dest: &std::path::Path, data: &[u8]) -> Do
         dest: dest.to_path_buf(),
         sha1: Some(sha1_hex(data)),
         size: Some(data.len() as u64),
+        root: None,
     }
 }
 
@@ -335,6 +336,7 @@ async fn oversized_body_is_rejected() {
         dest: dest.clone(),
         sha1: None,
         size: Some(100),
+        root: None,
     };
     let err = dl(fast())
         .fetch_all(vec![t], &CancellationToken::new(), |_| {})
@@ -460,6 +462,7 @@ async fn insecure_urls_are_refused_by_default() {
         dest: dir.path().join("x"),
         sha1: None,
         size: None,
+        root: None,
     };
     assert!(matches!(
         d.fetch_all(vec![t], &CancellationToken::new(), |_| {})
@@ -482,6 +485,7 @@ async fn insufficient_disk_space_is_reported_before_downloading() {
         dest: dir.path().join("x"),
         sha1: None,
         size: Some(u64::MAX / 4), // more than any disk
+        root: None,
     };
     let err = dl(fast())
         .fetch_all(vec![t], &CancellationToken::new(), |_| {})

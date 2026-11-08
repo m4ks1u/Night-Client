@@ -79,6 +79,7 @@ pub fn plan(
                 dest: target,
                 sha1: Some(downloads.raw.sha1.clone()),
                 size: Some(downloads.raw.size),
+                root: None,
             }),
             // Windows runtimes contain no links; never follow them.
             RuntimeFile::Link { target: t } => {
@@ -120,6 +121,7 @@ pub async fn ensure_runtime(
                 dest: manifest_path.clone(),
                 sha1: Some(entry.manifest.sha1.clone()),
                 size: Some(entry.manifest.size),
+                root: None,
             }],
             cancel,
             |_| {},

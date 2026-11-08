@@ -366,14 +366,14 @@ pub(crate) async fn recover_update(
     game_dir: PathBuf,
 ) -> Result<()> {
     let id = instance_id.to_owned();
-    let recorded = with_db(state, move |db| db.get_modpack(&id))
-        .await?
-        .and_then(|r| r.version_id);
+    // The id of the last update the database recorded (with that update, in
+    // one transaction): the only acknowledgment that keeps an update's files.
+    let acknowledged = with_db(state, move |db| db.modpack_update_id(&id)).await?;
     let found = tauri::async_runtime::spawn_blocking(move || {
-        packupdate::recover(&game_dir, recorded.as_deref())
+        packupdate::recover(&game_dir, acknowledged.as_deref())
     })
     .await
-    .map_err(|e| CmdError::new("internal", e.to_string()))??;
+    .map_err(|e| unconfirmed(&e.to_string()))??;
     if found != packupdate::Recovered::default() {
         tracing::warn!(
             instance = %instance_id,
@@ -383,6 +383,17 @@ pub(crate) async fn recover_update(
         );
     }
     Ok(())
+}
+
+/// A modpack update whose outcome isn't confirmed: recovery finishes or
+/// undoes it before the next launch or update.
+fn unconfirmed(detail: &str) -> CmdError {
+    CmdError::new(
+        "update_recovery",
+        format!(
+            "The modpack update couldn't be confirmed ({detail}). Night Client will finish or undo it before the next launch or update."
+        ),
+    )
 }
 
 /// Holds an instance's `modpack_updates` slot (so no modpack update can
@@ -666,13 +677,13 @@ async fn update(
         &path,
         &pack,
         &from_rows(rows),
-        &v.id,
         cancel,
         emitter(app, instance_id, None),
     )
     .await?;
-    // From here on the files are in place, and the old ones kept: record the
-    // update, then drop the old files; if recording fails, put them back.
+    // From here on the files are in place, and the old ones kept. Record the
+    // update in one transaction (pack, files, versions and the update id),
+    // then drop the old files; if nothing was recorded, put them back.
     let origin = Origin {
         project_id: Some(project),
         version_id: Some(v.id.clone()),
@@ -691,30 +702,45 @@ async fn update(
             .filter(|lv| Some(lv) != inst.loader_version.as_ref()),
         ..Default::default()
     };
+    let update_id = pending.id().to_owned();
+    let uid = update_id.clone();
     let recorded = with_db(state, move |db| {
-        db.set_modpack(&id, &new_rec, &files)?;
-        db.update_instance(&id, patch)
+        db.record_modpack_update(&id, &new_rec, &files, patch, &uid)
     })
     .await;
     let updated = match recorded {
-        Ok(u) => {
-            let done =
-                tauri::async_runtime::spawn_blocking(move || packupdate::finish(pending)).await;
-            if let Ok(Err(e)) = done {
-                // The update is recorded; the folder is cleaned up next time.
-                tracing::warn!(error = %e, "could not remove the finished update's folder");
-            }
-            u
-        }
+        Ok(u) => u,
         Err(e) => {
-            let undone =
-                tauri::async_runtime::spawn_blocking(move || packupdate::rollback(pending))
-                    .await
-                    .map_err(|j| CmdError::new("internal", j.to_string()))?;
-            undone?;
-            return Err(e);
+            // Nothing should be recorded. Confirm it before undoing the files:
+            // if the transaction did commit (an error after the commit), the
+            // update stands; if the database can't say, leave it to recovery.
+            let iid = inst.id.clone();
+            let ack = with_db(state, move |db| db.modpack_update_id(&iid)).await;
+            match ack {
+                Ok(Some(a)) if a == update_id => {
+                    let iid = inst.id.clone();
+                    with_db(state, move |db| db.get_instance(&iid)).await?
+                }
+                Ok(_) => {
+                    tauri::async_runtime::spawn_blocking(move || packupdate::rollback(pending))
+                        .await
+                        .map_err(|j| unconfirmed(&j.to_string()))??;
+                    return Err(e);
+                }
+                Err(_) => {
+                    tracing::warn!(error = %e.message, "could not confirm whether the update was recorded");
+                    // Pending dropped: the files and journal stay for recovery.
+                    drop(pending);
+                    return Err(unconfirmed(&e.message));
+                }
+            }
         }
     };
+    let done = tauri::async_runtime::spawn_blocking(move || packupdate::finish(pending)).await;
+    if !matches!(done, Ok(Ok(()))) {
+        // The update is recorded; the folder is cleaned up by the next recovery.
+        tracing::warn!("could not remove the finished update's folder");
+    }
     tracing::info!(
         id = %updated.id,
         version = %pack.version_id,

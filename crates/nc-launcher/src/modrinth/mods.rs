@@ -137,6 +137,7 @@ pub async fn install_version(
             dest: dest.clone(),
             sha1: Some(file.hashes.sha1.clone()),
             size: Some(file.size),
+            root: None,
         }],
         cancel,
         |_| {},

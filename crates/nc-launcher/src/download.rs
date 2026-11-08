@@ -27,7 +27,7 @@ use sha1::{Digest, Sha1};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 
-use crate::fsutil;
+use crate::{confined::Confined, fsutil};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DownloadTask {
@@ -36,6 +36,33 @@ pub struct DownloadTask {
     /// Expected lower- or upper-case hex SHA-1.
     pub sha1: Option<String>,
     pub size: Option<u64>,
+    /// When set, `dest` is a path from untrusted data inside this root: the
+    /// `.part` file and destination are checked through it (no link on the
+    /// way, folder still inside the root) before every open, rename and
+    /// cleanup, and a cleanup whose path is no longer trusted is skipped.
+    pub root: Option<Confined>,
+}
+
+impl DownloadTask {
+    /// Fail unless `path` is still safe to open or rename (only with a root).
+    fn check(&self, path: &Path) -> Result<(), DownloadError> {
+        match &self.root {
+            Some(r) => r.check(path).map_err(io_err(path)),
+            None => Ok(()),
+        }
+    }
+
+    /// Remove a `.part` file, through the root's safe cleanup when set.
+    async fn remove_part(&self, part: &Path) {
+        match &self.root {
+            Some(r) => {
+                r.remove_temp(part);
+            }
+            None => {
+                let _ = tokio::fs::remove_file(part).await;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -409,10 +436,17 @@ impl Downloader {
             path: dest.clone(),
             source: std::io::Error::other("destination has no parent"),
         })?;
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(io_err(parent))?;
+        match &task.root {
+            Some(r) => {
+                let rel = r.rel_of(dest).map_err(io_err(dest))?;
+                r.create_parent(&rel).map_err(io_err(dest))?;
+            }
+            None => tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(io_err(parent))?,
+        }
         let part = part_path(dest);
+        task.check(&part)?;
 
         let mut hasher = Sha1::new();
         let mut existing = tokio::fs::metadata(&part)
@@ -453,7 +487,7 @@ impl Downloader {
                 false
             }
             StatusCode::RANGE_NOT_SATISFIABLE => {
-                let _ = tokio::fs::remove_file(&part).await;
+                task.remove_part(&part).await;
                 return Err(DownloadError::Size {
                     url: task.url.clone(),
                     expected: task.size.unwrap_or(0),
@@ -468,6 +502,7 @@ impl Downloader {
             }
         };
 
+        task.check(&part)?;
         let mut file = tokio::fs::OpenOptions::new()
             .create(true)
             .write(true)
@@ -502,7 +537,7 @@ impl Downloader {
                 && written > expected
             {
                 drop(file);
-                let _ = tokio::fs::remove_file(&part).await;
+                task.remove_part(&part).await;
                 return Err(DownloadError::Size {
                     url: task.url.clone(),
                     expected,
@@ -535,7 +570,7 @@ async fn finalize(task: &DownloadTask, part: &Path, hasher: Sha1) -> Result<(), 
         if let Some(expected) = &task.sha1 {
             let actual = hex::encode(hasher.finalize());
             if !actual.eq_ignore_ascii_case(expected) {
-                let _ = tokio::fs::remove_file(part).await;
+                task.remove_part(part).await;
                 return Err(DownloadError::Integrity {
                     url: task.url.clone(),
                     expected: expected.clone(),
@@ -543,6 +578,8 @@ async fn finalize(task: &DownloadTask, part: &Path, hasher: Sha1) -> Result<(), 
                 });
             }
         }
+        task.check(part)?;
+        task.check(dest)?;
         tokio::fs::rename(part, dest).await.map_err(io_err(dest))?;
         Ok(())
     }

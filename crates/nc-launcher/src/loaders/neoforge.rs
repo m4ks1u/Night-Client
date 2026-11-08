@@ -328,6 +328,7 @@ pub async fn install(
                 dest: installer.clone(),
                 sha1: Some(sha),
                 size: None,
+                root: None,
             }],
             cancel,
             |_| {},
@@ -388,6 +389,7 @@ pub async fn install(
                 dest,
                 sha1: lib.sha1,
                 size: lib.size,
+                root: None,
             }),
             None => embedded.push(EmbeddedLib {
                 path: lib.path,
@@ -496,6 +498,7 @@ pub async fn install(
                         dest,
                         sha1: Some(maps.sha1),
                         size: Some(maps.size),
+                        root: None,
                     }],
                     cancel,
                     |_| {},

@@ -170,6 +170,7 @@ pub async fn install(
             dest: fsutil::safe_join(&layout.libraries_dir(), &lib.path)?,
             sha1: Some(sha1),
             size: lib.size,
+            root: None,
         });
     }
     let files = meta.dl.fetch_all(tasks, cancel, emit).await?;

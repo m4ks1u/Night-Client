@@ -126,7 +126,7 @@ async fn update_replaces_untouched_files_and_keeps_user_changes() {
     let mut broken = v2.clone();
     broken.files[2].sha512 = "0".repeat(128);
     assert!(
-        packupdate::update(&dl, g, z2.path(), &broken, &tracked, "v2", &c, |_| {})
+        packupdate::update(&dl, g, z2.path(), &broken, &tracked, &c, |_| {})
             .await
             .is_err()
     );
@@ -135,7 +135,7 @@ async fn update_replaces_untouched_files_and_keeps_user_changes() {
     assert_eq!(read(g, "config/x.toml").unwrap(), b"x1");
     assert!(!g.join(packupdate::STAGING).exists(), "staging cleaned up");
 
-    let (r, pending) = packupdate::update(&dl, g, z2.path(), &v2, &tracked, "v2", &c, |_| {})
+    let (r, pending) = packupdate::update(&dl, g, z2.path(), &v2, &tracked, &c, |_| {})
         .await
         .unwrap();
     // The old files are kept until the update is recorded.
@@ -170,7 +170,7 @@ async fn update_replaces_untouched_files_and_keeps_user_changes() {
     let opt = r.tracked.iter().find(|t| t.path == "options.txt").unwrap();
     assert_eq!(opt.sha1, hex::encode(sha1::Sha1::digest(b"o1")));
     // Updating again to the same version changes nothing.
-    let (again, pending) = packupdate::update(&dl, g, z2.path(), &v2, &r.tracked, "v2", &c, |_| {})
+    let (again, pending) = packupdate::update(&dl, g, z2.path(), &v2, &r.tracked, &c, |_| {})
         .await
         .unwrap();
     packupdate::finish(pending).unwrap();

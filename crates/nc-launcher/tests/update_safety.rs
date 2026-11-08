@@ -69,7 +69,6 @@ async fn a_failed_update_leaves_the_instance_unchanged() {
         z.path(),
         &pack(),
         &old,
-        "v2",
         &CancellationToken::new(),
         |_| {},
     )
@@ -101,7 +100,6 @@ async fn an_update_keeps_existing_content_in_the_staging_folder() {
         z.path(),
         &pack(),
         &[],
-        "v2",
         &CancellationToken::new(),
         |_| {},
     )
@@ -114,7 +112,7 @@ async fn an_update_keeps_existing_content_in_the_staging_folder() {
     );
     assert_eq!(std::fs::read(g.path().join("config/x.toml")).unwrap(), b"x");
     // Recovery doesn't touch it either.
-    packupdate::recover(g.path(), Some("v2")).unwrap();
+    packupdate::recover(g.path(), None).unwrap();
     assert!(staging.join("user.txt").exists());
 }
 
@@ -148,7 +146,7 @@ async fn a_cancelled_update_changes_nothing() {
     let z = archive(&[("overrides/a.txt", b"new")]);
     let c = CancellationToken::new();
     c.cancel();
-    let r = packupdate::update(&dl(), g.path(), z.path(), &pack(), &old, "v2", &c, |_| {}).await;
+    let r = packupdate::update(&dl(), g.path(), z.path(), &pack(), &old, &c, |_| {}).await;
     assert_eq!(
         r.as_ref().map(|_| ()).unwrap_err().code(),
         "cancelled",
@@ -217,7 +215,6 @@ async fn modpack_writes_do_not_follow_junctions() {
         z.path(),
         &pack(),
         &[],
-        "v2",
         &CancellationToken::new(),
         |_| {},
     )
@@ -242,7 +239,6 @@ async fn a_junction_at_the_staging_folder_is_not_used() {
         z.path(),
         &pack(),
         &[],
-        "v2",
         &CancellationToken::new(),
         |_| {},
     )

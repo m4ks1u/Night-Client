@@ -137,13 +137,13 @@ pub fn extract_zip(
         let n = match copied {
             Ok(n) => n,
             Err(e) => {
-                let _ = fs::remove_file(&tmp);
+                root.remove_temp(&tmp);
                 return Err(e.into());
             }
         };
         written += n;
         if written > max_total {
-            let _ = fs::remove_file(&tmp);
+            root.remove_temp(&tmp);
             return Err(ExtractError::TooLarge(max_total));
         }
         root.persist(&tmp, rel)?;

@@ -127,6 +127,7 @@ pub async fn install_vanilla(
         dest: client_jar.clone(),
         sha1: Some(client.sha1.clone()),
         size: Some(client.size),
+        root: None,
     });
 
     for lib in &libs {
@@ -142,6 +143,7 @@ pub async fn install_vanilla(
             dest: fsutil::safe_join(&layout.libraries_dir(), &lib.path)?,
             sha1: lib.sha1.clone(),
             size: lib.size,
+            root: None,
         });
     }
 
@@ -155,6 +157,7 @@ pub async fn install_vanilla(
             dest: fsutil::safe_join(&objects_root, &path)?,
             sha1: Some(obj.hash.clone()),
             size: Some(obj.size),
+            root: None,
         });
     }
 
@@ -166,6 +169,7 @@ pub async fn install_vanilla(
                 dest: dest.clone(),
                 sha1: Some(cfg.file.sha1.clone()),
                 size: Some(cfg.file.size),
+                root: None,
             });
             Some(dest)
         }
