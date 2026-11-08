@@ -104,6 +104,7 @@ export default function App() {
   const back = useRouter((s) => s.back);
   const startupError = useApp((s) => s.info?.startupError);
   const reduceMotion = useApp((s) => s.settings?.reduceMotion ?? false);
+  const compact = useApp((s) => s.settings?.compactLayout ?? false);
   const online = useOnline();
   const [palette, setPalette] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
@@ -159,6 +160,10 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle("reduce-motion", reduceMotion);
   }, [reduceMotion]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("density-compact", compact);
+  }, [compact]);
 
   // Move focus to the new page's heading so keyboard and screen-reader users
   // land on the new content (not on the first launch).
