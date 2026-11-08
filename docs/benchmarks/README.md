@@ -160,3 +160,41 @@ Bundle: JS 476 KB (148 KB gzip), CSS 28 KB (6.5 KB gzip); `night-client.exe` 21.
 slower with the palette, toasts and artwork, and is slightly faster than the Stage 5 batches (single
 runs on a desktop PC, so treat the difference as noise). Memory is unchanged and still misses the
 150 MB target.
+
+## Stage 7 re-run (2026-11-08, same PC, release build)
+
+| Run | UI ready | Private MB | Working set MB | Idle CPU |
+|---|---|---|---|---|
+| 1 | 259 ms | 115.9 | 328.0 | 0 % |
+| 2 | 255 ms | 115.3 | 327.3 | 0 % |
+| 3 | 257 ms | 119.5 | 329.5 | 0 % |
+| 4 | 264 ms | 119.1 | 330.9 | 0 % |
+| 5 | 257 ms | 116.9 | 327.9 | 0 % |
+
+**Idle memory now meets the < 150 MB target.** Breakdown of one idle run (private MB):
+
+| Process | GPU on (Stage 6 default) | GPU off (Stage 7 default) |
+|---|---|---|
+| `night-client.exe` | 10.8 | 10.7 |
+| WebView2 browser | 35.9 | 35.0 |
+| WebView2 GPU process | 82.8 | 15.2 |
+| WebView2 renderer | 32.6 | 33.2 |
+| Network + storage services, crashpad | 21.2 | 21.3 |
+| **Total** | **183.3** | **115.4** |
+
+Effect of `--disable-gpu`. Debug build, 12 rounds of navigation, palette open/close and smooth
+scrolling, with a `requestAnimationFrame` loop running throughout; two runs each:
+
+| | Frame p50 / p99 / max | Frames > 25 ms | CPU while navigating (one core) | Idle CPU |
+|---|---|---|---|---|
+| GPU | 5.6 / 5.7 / 5.7–12.5 ms | 0 | 84–86 % | 0–0.5 % |
+| Software | 5.6 / 5.7 / 5.8 ms | 0 | 94–96 % | 0 % |
+
+The display runs at about 180 Hz. Other flags saved much less (debug build, against two baseline runs
+of 258 and 267 MB): `--enable-low-end-device-mode` −7 to −16 MB, `--disable-gpu-compositing` −23 to
+−32 MB, versus −71 to −80 MB for `--disable-gpu`. Setting `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` has no
+effect, because Tauri passes its own arguments.
+
+Minimized for 20 s with the low memory-usage target: private memory is unchanged (115.6 MB), and the
+renderer's working set drops from 73.8 to 21.6 MB (total working set from 327 to 285 MB).
+With Hardware acceleration switched on, the release build idles at 176 MB, confirming the setting is applied.
