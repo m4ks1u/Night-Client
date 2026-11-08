@@ -2379,7 +2379,7 @@ dependencies = [
 
 [[package]]
 name = "nc-core"
-version = "0.0.1"
+version = "0.1.0-beta.1"
 dependencies = [
  "regex",
  "serde",
@@ -2390,7 +2390,7 @@ dependencies = [
 
 [[package]]
 name = "nc-launcher"
-version = "0.0.1"
+version = "0.1.0-beta.1"
 dependencies = [
  "base64 0.23.1",
  "futures",
@@ -2419,7 +2419,7 @@ dependencies = [
 
 [[package]]
 name = "nc-store"
-version = "0.0.1"
+version = "0.1.0-beta.1"
 dependencies = [
  "nc-core",
  "rusqlite",
@@ -2469,7 +2469,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "night-client"
-version = "0.0.1"
+version = "0.1.0-beta.1"
 dependencies = [
  "nc-core",
  "nc-launcher",
