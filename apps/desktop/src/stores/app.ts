@@ -88,6 +88,8 @@ export const useApp = create<AppStore>((set, get) => ({
     ]);
     set({ info, system, account, queue, running: Object.fromEntries(running.map((r) => [r.instanceId, r.startedAt])) });
     if (!info.startupError) {
+      // Renew the saved sign-in in the background so problems show before Play.
+      api.checkActiveAccount().then((account) => set({ account })).catch(() => {});
       api.getSettings().then((settings) => set({ settings })).catch(() => {});
       void get().refreshInstances();
     }
