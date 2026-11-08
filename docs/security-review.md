@@ -41,6 +41,13 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
 - Every name that becomes a path segment passes `nc_core::paths::validate_segment`: no `..`, no
   separators, no drive letters, no reserved device names, no alternate data streams.
 - Relative paths from metadata go through `fsutil::safe_join`.
+- Since the audit fixes, writes to such paths go through `confined::Confined`: an existing junction or
+  symlink below the root is never followed (directory junctions, file symlinks, a folder swapped for a
+  junction after the check), temporary files are random and created exclusively, and the destination
+  folder is resolved again before each rename. Used by `extract_zip`, modpack downloads and overrides,
+  and modpack updates. `atomic_write` (and the game-settings writes) also use random, exclusive
+  temporary files. Tested by `confined::tests`, `fsutil` and `tests/update_safety.rs`, including real
+  Windows junctions.
 - Maven coordinates are checked segment by segment.
 - Tested by `paths::rejects_traversal_and_windows_tricks`, `layout::rejects_traversal_in_ids`,
   `maven::rejects_malicious_coordinates`, `library_with_traversal_path_is_rejected`,
@@ -58,8 +65,8 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
   `extracts_embedded_libraries_verified_and_skips_processor_outputs`.
 - **Mod jars:** inspected read-only, with 256 KiB per metadata file. Nothing is extracted or executed.
 - **Modpack overrides** (Stage 13): only entries under `overrides/` and `client-overrides/`, each
-  checked with the instance path rules (relative, no `..`, no drive or reserved names, not `.natives`)
-  and joined with `safe_join`. Symlinks abort the import; the total is capped at 2 GiB; files are
+  checked with the instance path rules (relative, no `..`, no drive or reserved names, not `.natives`
+  or `.nc-update`, also not through an 8.3 short name) and written through `Confined`. Symlinks abort the import; the total is capped at 2 GiB; files are
   written as `.part` and renamed. The index itself is capped at 16 MiB. Tested by
   `overrides_client_wins_and_paths_are_checked` and `reads_and_validates_the_index`.
 - Tested by `extract_rejects_zip_slip`, `extract_enforces_size_cap`,
@@ -122,6 +129,15 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
   Modrinth project, and a version using another loader is refused.
 
 ## Open risks
+- **Write races by a local process** (audit NC-AUDIT-001). `Confined` checks every component and
+  resolves the destination folder again just before a rename, but a process running as the same user
+  could still swap a folder for a junction in between. Closing that fully needs handle-relative Windows
+  APIs. Such a process can already write anywhere the user can.
+- **Modpack update recovery needs the launcher** (NC-AUDIT-002). An update interrupted by a crash or
+  power loss is finished or undone the next time the instance is updated or launched from Night Client.
+  Starting the game outside Night Client before that would see a half-updated folder. Undoing never
+  overwrites a file that appeared in the meantime: then the old file stays in `.nc-update` and the error
+  says where.
 - **Modpacks choose their own mods** (Stage 13). The hashes prove the files are the ones the pack
   lists, not that the pack author's choices are safe. A pack from a local file is as trustworthy as its
   source; Modrinth packs reference files Modrinth or the listed hosts serve. Overrides can contain any

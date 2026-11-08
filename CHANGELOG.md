@@ -6,6 +6,12 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Security: independent audit fixes (NC-AUDIT-001 to 003)
+- Archive extraction, modpack imports and modpack updates no longer follow a junction or symlink that already exists inside the instance; temporary files get random names and are created exclusively.
+- Modpack updates are now a transaction: everything is checked first, old files are kept until the update is recorded, any failure puts everything back, and an update interrupted by a crash is finished or undone before the next launch or update.
+- Updates use their own marked folder in `.nc-update` and never delete anything else there; packs can no longer write into `.nc-update`.
+- An update can't start while the same instance is launching, and a cancelled update only says "Nothing was changed" when that is true.
+
 ### Added: Stage 15 (turning packs on)
 - An "In game" switch on each resource pack and shader pack. Resource packs are turned on in the instance's `options.txt` (the last one turned on has priority). Shader packs are turned on in Iris's settings, when Iris is installed; only one can be on. Updating or removing a pack keeps the game's settings pointing at the right file.
 - End-to-end test `e2e/pack-activation.mjs` (real Modrinth), also in the manual CI e2e job.
