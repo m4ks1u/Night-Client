@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex, RwLock, atomic::AtomicBool},
 };
 
 use nc_launcher::{
@@ -16,7 +16,14 @@ use nc_launcher::{
 use nc_store::{AppSettings, Store};
 
 pub struct AppState {
+    /// Game data (versions, libraries, assets, runtimes, instances, cache).
     pub layout: Layout,
+    /// `%APPDATA%\NightClient`: the database and the saved data location
+    /// always live here, wherever the game data is.
+    pub home: PathBuf,
+    /// Set while the game data is being moved; installs, launches and
+    /// instance or mod changes are refused meanwhile.
+    pub relocating: AtomicBool,
     pub log_dir: PathBuf,
     /// `None` when the database could not be opened (e.g. created by a newer
     /// version); the UI then shows `startup_error` instead of crashing.
@@ -48,8 +55,8 @@ pub struct GameHandle {
 }
 
 impl AppState {
-    pub fn new(layout: Layout, log_dir: PathBuf) -> Self {
-        let (store, startup_error) = match Store::open(&layout.root().join("night-client.db")) {
+    pub fn new(home: PathBuf, layout: Layout, log_dir: PathBuf) -> Self {
+        let (store, startup_error) = match Store::open(&home.join("night-client.db")) {
             Ok(s) => (Some(Arc::new(s)), None),
             Err(e) => {
                 tracing::error!(error = %e, "database unavailable");
@@ -60,6 +67,8 @@ impl AppState {
         Self {
             meta: RwLock::new(build_meta(&layout, &settings)),
             layout,
+            home,
+            relocating: AtomicBool::new(false),
             log_dir,
             store,
             startup_error,

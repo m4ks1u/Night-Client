@@ -45,6 +45,7 @@ fn emit_queue(app: &AppHandle, state: &AppState) {
 /// version is already queued or running).
 #[tauri::command]
 pub fn install_version(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<u64> {
+    super::ensure_not_relocating(&state)?;
     // `id` is an install key: vanilla:<mc>, fabric:<mc>:<v> or neoforge:<mc>:<v>.
     let id = InstallKey::parse(&id)
         .map_err(|_| invalid("invalid install key"))?

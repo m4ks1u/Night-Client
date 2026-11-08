@@ -49,6 +49,7 @@ pub fn running_instances(state: State<'_, AppState>) -> Vec<Running> {
 #[tauri::command]
 pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<()> {
     validate_instance_id(&id)?;
+    super::ensure_not_relocating(&state)?;
     let lookup = id.clone();
     let (instance, settings) = with_db(&state, move |db| {
         Ok((db.get_instance(&lookup)?, db.app_settings()))
