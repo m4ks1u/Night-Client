@@ -1,13 +1,20 @@
 //! Instance folders and launch preparation.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use nc_core::{
+    java::{Compatibility, PeArch, compatibility},
     launch::{self, LaunchAuth, LaunchCommand, LaunchOptions, LaunchPaths},
+    manifest::AssetIndex,
     rules::Environment,
 };
 
-use crate::{LauncherError, install, layout::Layout, meta::read_json};
+use crate::{
+    LauncherError, fsutil, install,
+    javadetect::{self, JavaSource},
+    layout::Layout,
+    meta::read_json,
+};
 
 /// `<data>/instances/<dir_name>`: the instance's game directory.
 pub fn game_dir(layout: &Layout, dir_name: &str) -> Result<PathBuf, LauncherError> {
@@ -46,10 +53,36 @@ pub struct LaunchRequest {
     pub auth: LaunchAuth,
     pub max_memory_mb: u32,
     pub extra_jvm_args: Vec<String>,
+    /// User-chosen Java; `None` uses the official Mojang runtime.
+    pub java_override: Option<PathBuf>,
+}
+
+/// Check a Java runtime against what a version needs. Returns the `javaw.exe`
+/// to start, or an actionable error.
+pub fn check_java(
+    path: &Path,
+    required_major: u32,
+) -> Result<(PathBuf, Compatibility), LauncherError> {
+    let rt = javadetect::inspect(path, JavaSource::Custom)
+        .map_err(|e| LauncherError::JavaIncompatible(e.to_string()))?;
+    let compat = compatibility(required_major, rt.major, rt.arch == PeArch::X64);
+    if compat == Compatibility::Incompatible {
+        return Err(LauncherError::JavaIncompatible(if rt.arch != PeArch::X64 {
+            format!("{} is not a 64-bit Java runtime", rt.home.display())
+        } else {
+            format!(
+                "this version needs Java {required_major} or newer, but {} is Java {}",
+                rt.home.display(),
+                rt.major
+            )
+        }));
+    }
+    Ok((rt.path, compat))
 }
 
 /// Build the launch command for an installed version in an instance folder.
-/// Extracts legacy natives as needed. Does not spawn anything.
+/// Verifies required files exist, extracts legacy natives and lays out
+/// legacy assets. Does not spawn anything.
 pub async fn prepare_launch(
     layout: &Layout,
     req: LaunchRequest,
@@ -63,31 +96,85 @@ pub async fn prepare_launch(
     let env = Environment::windows_x64();
     let libs = nc_core::libraries::resolve(&version, &env)?;
     let java_req = nc_core::java::requirement(&version);
+    let game_dir = ensure_game_dir(layout, &req.dir_name)?;
+
+    let java = match &req.java_override {
+        Some(p) => {
+            let (exe, compat) = check_java(p, java_req.major_version)?;
+            if compat == Compatibility::Risky {
+                tracing::warn!(version = %id, java = %exe.display(), "launching an old version with a newer Java than it expects");
+            }
+            exe
+        }
+        None => {
+            let exe = layout
+                .runtime_dir(&java_req.component)?
+                .join("bin")
+                .join("javaw.exe");
+            if !exe.is_file() {
+                return Err(LauncherError::FilesMissing(format!(
+                    "Java runtime {}",
+                    java_req.component
+                )));
+            }
+            exe
+        }
+    };
+
+    // Cheap existence check so a damaged install fails with "verify files"
+    // instead of an obscure ClassNotFoundException inside the game.
+    let client_jar = layout.client_jar(id)?;
+    let mut required = vec![client_jar.clone()];
+    for l in &libs {
+        required.push(fsutil::safe_join(&layout.libraries_dir(), &l.path)?);
+    }
+    if let Some(missing) = required.iter().find(|p| !p.is_file()) {
+        return Err(LauncherError::FilesMissing(
+            missing
+                .strip_prefix(layout.root())
+                .unwrap_or(missing)
+                .display()
+                .to_string(),
+        ));
+    }
+
     let natives = layout.natives_dir(&req.dir_name, id)?;
     install::prepare_natives(layout.libraries_dir(), libs.clone(), natives.clone()).await?;
 
+    // Legacy asset layouts.
+    let mut game_assets = layout.assets_dir();
+    if let Some(ai) = &version.asset_index {
+        let index: AssetIndex = read_json(&layout.asset_index(&ai.id)?, "asset index").await?;
+        if index.map_to_resources {
+            let dest = game_dir.join("resources");
+            let root = layout.assets_dir();
+            tokio::task::spawn_blocking({
+                let dest = dest.clone();
+                move || install::materialize_assets(&index, &root, &dest)
+            })
+            .await
+            .map_err(|e| LauncherError::Spawn(e.to_string()))??;
+            game_assets = dest;
+        } else if index.is_virtual {
+            game_assets = layout.assets_dir().join("virtual").join(&ai.id);
+        }
+    }
+
     let paths = LaunchPaths {
-        java: layout
-            .runtime_dir(&java_req.component)?
-            .join("bin")
-            .join("javaw.exe"),
-        game_dir: ensure_game_dir(layout, &req.dir_name)?,
+        java,
+        game_dir,
         assets_root: layout.assets_dir(),
         libraries_dir: layout.libraries_dir(),
         natives_dir: natives,
-        client_jar: layout.client_jar(id)?,
+        client_jar,
+        game_assets,
         log_config: version
             .logging
             .as_ref()
             .and_then(|l| l.client.as_ref())
-            .and_then(|c| layout.log_config(&c.file.id).ok()),
+            .and_then(|c| layout.log_config(&c.file.id).ok())
+            .filter(|p| p.is_file()),
     };
-    if !paths.java.is_file() {
-        return Err(LauncherError::RuntimeUnavailable(format!(
-            "{} is not installed; repair the version",
-            java_req.component
-        )));
-    }
     let opts = LaunchOptions {
         min_memory_mb: None,
         max_memory_mb: req.max_memory_mb,

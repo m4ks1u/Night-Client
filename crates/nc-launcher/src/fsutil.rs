@@ -144,6 +144,45 @@ pub fn extract_zip(
     Ok(count)
 }
 
+/// Delete leftover `*.part` (interrupted downloads) and `*.tmp` (interrupted
+/// atomic writes) files older than `max_age` under `root`. Fresh ones are
+/// kept so a download that is resumed soon is not thrown away. Never
+/// follows symlinks/junctions. Returns (files removed, bytes freed).
+pub fn sweep_stale(root: &Path, max_age: std::time::Duration) -> (u64, u64) {
+    let now = std::time::SystemTime::now();
+    let (mut n, mut bytes) = (0u64, 0u64);
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
+            let path = e.path();
+            if ft.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let name = e.file_name().to_string_lossy().into_owned();
+            if !(name.ends_with(".part") || name.ends_with(".tmp")) {
+                continue;
+            }
+            let Ok(meta) = e.metadata() else { continue };
+            let old = meta
+                .modified()
+                .ok()
+                .and_then(|m| now.duration_since(m).ok())
+                .is_some_and(|age| age > max_age);
+            if old && fs::remove_file(&path).is_ok() {
+                n += 1;
+                bytes += meta.len();
+            }
+        }
+    }
+    (n, bytes)
+}
+
 /// Free bytes available to the current user on the volume holding `path`.
 /// The path (or its nearest existing ancestor) is used.
 #[cfg(windows)]
@@ -288,6 +327,29 @@ mod tests {
             Err(ExtractError::TooLarge(_))
         ));
         assert!(!dir.path().join("big.bin").exists());
+    }
+
+    #[test]
+    fn sweep_removes_only_old_temp_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("libraries/a");
+        fs::create_dir_all(&sub).unwrap();
+        for f in ["x.jar.part", "y.json.123.tmp", "keep.jar", "fresh.part"] {
+            fs::write(sub.join(f), b"data").unwrap();
+        }
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3 * 86400);
+        for f in ["x.jar.part", "y.json.123.tmp", "keep.jar"] {
+            fs::File::options()
+                .write(true)
+                .open(sub.join(f))
+                .unwrap()
+                .set_modified(old)
+                .unwrap();
+        }
+        let (n, bytes) = sweep_stale(dir.path(), std::time::Duration::from_secs(86400));
+        assert_eq!((n, bytes), (2, 8));
+        assert!(sub.join("keep.jar").exists());
+        assert!(sub.join("fresh.part").exists());
     }
 
     #[test]

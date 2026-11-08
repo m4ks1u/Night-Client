@@ -12,10 +12,12 @@ pub mod fsutil;
 pub mod install;
 pub mod instance;
 pub mod java;
+pub mod javadetect;
 pub mod layout;
 pub mod logging;
 pub mod meta;
 pub mod process;
+pub mod queue;
 pub mod sys;
 
 pub use error::LauncherError;

@@ -74,12 +74,15 @@ pub struct Progress {
     pub done_bytes: u64,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Summary {
     pub downloaded_files: u64,
     pub skipped_files: u64,
     pub downloaded_bytes: u64,
+    /// Destinations that were (re-)downloaded, i.e. missing or damaged before.
+    #[serde(skip)]
+    pub fetched: Vec<PathBuf>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -143,6 +146,7 @@ pub struct Downloader {
 struct Counters {
     done_files: AtomicU64,
     done_bytes: AtomicU64,
+    fetched: std::sync::Mutex<Vec<PathBuf>>,
 }
 
 impl Downloader {
@@ -304,6 +308,11 @@ impl Downloader {
                 let r = this.download_with_retry(&task, &tok, &counters).await;
                 if r.is_ok() {
                     counters.done_files.fetch_add(1, Ordering::Relaxed);
+                    counters
+                        .fetched
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .push(task.dest.clone());
                 } else {
                     tok.cancel(); // fail fast
                 }
@@ -337,6 +346,12 @@ impl Downloader {
             downloaded_files: counters.done_files.load(Ordering::Relaxed),
             skipped_files: skipped,
             downloaded_bytes: counters.done_bytes.load(Ordering::Relaxed),
+            fetched: std::mem::take(
+                &mut *counters
+                    .fetched
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            ),
         })
     }
 
