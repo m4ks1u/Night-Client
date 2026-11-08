@@ -22,6 +22,8 @@ pub struct AppSettings {
     pub gpu_acceleration: bool,
     /// Look for a newer Night Client shortly after startup (official builds only).
     pub check_updates: bool,
+    /// The first-run welcome was finished or skipped.
+    pub onboarded: bool,
 }
 
 impl Default for AppSettings {
@@ -33,6 +35,7 @@ impl Default for AppSettings {
             reduce_motion: false,
             gpu_acceleration: false,
             check_updates: true,
+            onboarded: false,
         }
     }
 }
