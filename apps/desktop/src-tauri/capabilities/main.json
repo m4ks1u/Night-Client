@@ -51,6 +51,8 @@
     "allow-modpack-info",
     "allow-modpack-check-update",
     "allow-modpack-update",
+    "allow-pack-activation",
+    "allow-set-pack-active",
     "allow-modrinth-project",
     "allow-modrinth-categories",
     "allow-open-modrinth-page",

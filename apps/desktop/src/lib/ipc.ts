@@ -73,6 +73,7 @@ export type SearchHit = {
   installed: boolean;
 };
 export type SearchView = { hits: SearchHit[]; total: number; offset: number };
+export type PackActivation = { active: string[]; available: boolean; note: string | null };
 export type ModpackHit = Omit<SearchHit, "installed">;
 export type ModpackHits = { hits: ModpackHit[]; total: number; offset: number };
 /** A validated .mrpack held by the backend behind `token`. */
@@ -310,6 +311,10 @@ export const api = {
   setModEnabled: (instanceId: string, fileName: string, enabled: boolean, kind: ContentKind = "mod") =>
     invoke<void>("set_mod_enabled", { instanceId, fileName, enabled, kind }),
   removeMod: (instanceId: string, fileName: string, kind: ContentKind = "mod") => invoke<void>("remove_mod", { instanceId, fileName, kind }),
+  /** Packs turned on in the game's own settings (resource packs, Iris shaders). */
+  packActivation: (instanceId: string, kind: ContentKind) => invoke<PackActivation>("pack_activation", { instanceId, kind }),
+  setPackActive: (instanceId: string, kind: ContentKind, fileName: string, active: boolean) =>
+    invoke<void>("set_pack_active", { instanceId, kind, fileName, active }),
   checkModUpdates: (instanceId: string, kind: ContentKind = "mod") => invoke<ModUpdate[]>("check_mod_updates", { instanceId, kind }),
   updateMods: (instanceId: string, fileNames: string[], kind: ContentKind = "mod") =>
     invoke<UpdateSummary>("update_mods", { instanceId, fileNames, kind }),

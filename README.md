@@ -16,6 +16,7 @@ downloaded from official Mojang servers and verified against Mojang's published 
 - Vanilla, Fabric, Quilt, NeoForge and Forge (Minecraft 1.12.2 and newer) instances, each with its own game directory.
 - Official Mojang Java runtimes installed automatically for each version.
 - Modrinth mods (with dependency resolution), resource packs and shader packs, with update checks.
+  Packs can be turned on in the game from the launcher (resource packs; shader packs with Iris).
 - Modrinth modpacks (`.mrpack`), from Discover or a local file, installed as a new instance, and
   updated in place while keeping your own changes.
 - Verified, resumable, cancellable downloads that never freeze the UI.

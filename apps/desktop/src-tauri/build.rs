@@ -39,6 +39,8 @@ const COMMANDS: &[&str] = &[
     "modpack_info",
     "modpack_check_update",
     "modpack_update",
+    "pack_activation",
+    "set_pack_active",
     "modrinth_project",
     "modrinth_categories",
     "open_modrinth_page",

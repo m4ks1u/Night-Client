@@ -9,6 +9,7 @@
 
 pub mod content;
 pub mod error;
+pub mod gameopts;
 pub mod installprofile;
 pub mod java;
 pub mod jvmargs;

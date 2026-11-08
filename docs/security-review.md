@@ -96,6 +96,10 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
 - Modrinth ids and slugs are validated before use in URLs. File URLs must be HTTPS on
   `cdn.modrinth.com`. File names must be safe names with the kind's extension: `.jar` for mods, `.zip`
   for resource and shader packs (Stage 12), checked on every command, including toggle and remove.
+- Turning packs on (Stage 15) writes only `options.txt` and `config/iris.properties` inside the
+  instance. It checks the file name like every pack command and only accepts installed, enabled packs.
+  Only the one line or key changes, values are JSON- or properties-escaped, writes are atomic and capped
+  at 1 MiB, and nothing is written while the game runs.
 - Packs are data for the game or a shader mod; Night Client never opens or extracts them. Shader
   packs contain GLSL that the shader mod compiles on the GPU.
 - Downloads are verified by size and SHA-1, then SHA-512.

@@ -160,6 +160,25 @@ The folder is the source of truth. `instance_mods` (migration v5; `kind` column 
 and is re-synced on every listing. The app layer (`commands/mods.rs`) re-validates compatibility before every install and
 blocks changes while the game runs.
 
+### Turning packs on in the game (Stage 15)
+
+`nc_core::gameopts` edits the game's own settings as text and keeps every other line byte for byte (and
+the file's line endings):
+- **Resource packs:** the `resourcePacks:[...]` JSON line of `options.txt`. Ids are `file/<name>` from
+  Minecraft 1.13 on (`uses_file_prefix`), the bare name before. Turning a pack on puts it last, which is
+  the top priority.
+- **Iris shader packs:** `shaderPack` and `enableShaders` in `config/iris.properties` (Java properties;
+  non-ASCII written as `\uXXXX`, a Latin-1 file is read as Latin-1).
+
+`nc_launcher::gameopts` reads (1 MiB cap) and writes (temp file, then rename) those files. A new
+`options.txt` starts with `version:<data version>` from the client jar's `version.json` when it's
+installed, so the game doesn't data-fix it as an old file. When a pack is updated or removed, its entry
+follows the new file name or is dropped (`follow_pack`). Changes are refused while the game runs, because
+the game rewrites `options.txt` on exit. Shader packs can only be turned on with Iris installed.
+
+On a vanilla instance, "shader packs" from Modrinth are core-shader packs, which the game loads as
+resource packs. Since Stage 15 they install into `resourcepacks/` (`stored_kind`).
+
 ### Modpack updates (Stage 14)
 
 An import records the pack's origin and every file it wrote (downloaded files and overrides, an override

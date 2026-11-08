@@ -75,6 +75,8 @@ macro_rules! app_commands {
             commands::mods::list_mods,
             commands::mods::set_mod_enabled,
             commands::mods::remove_mod,
+            commands::mods::pack_activation,
+            commands::mods::set_pack_active,
             commands::mods::check_mod_updates,
             commands::mods::update_mods,
             commands::mods::import_local_mod,

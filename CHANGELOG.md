@@ -6,6 +6,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 15 (turning packs on)
+- An "In game" switch on each resource pack and shader pack. Resource packs are turned on in the instance's `options.txt` (the last one turned on has priority). Shader packs are turned on in Iris's settings, when Iris is installed; only one can be on. Updating or removing a pack keeps the game's settings pointing at the right file.
+- End-to-end test `e2e/pack-activation.mjs` (real Modrinth), also in the manual CI e2e job.
+
+### Fixed
+- On vanilla instances, core-shader packs were installed into `shaderpacks/`, which the game doesn't read without a shader mod. They now go into `resourcepacks/` and show in the Resource packs tab.
+
 ### Added: Stage 14 (modpack updates)
 - Instances made from a modpack show a Modpack card on the Overview tab: the pack's version, Check for updates, and Update. The update replaces or removes only the files that are still as the pack installed them. Files you edited, deleted or added are kept, and so are disabled mods. Everything new is downloaded and verified before any file changes; cancelling changes nothing.
 - A pack imported from a file is recognised on Modrinth by its hash, so it can be updated too.

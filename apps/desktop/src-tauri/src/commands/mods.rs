@@ -8,7 +8,7 @@ use std::{
 };
 
 use nc_launcher::{
-    CancellationToken, LauncherError,
+    CancellationToken, LauncherError, gameopts,
     modrinth::{
         api::{Category, Project, SearchHit, SearchQuery, SortIndex, Version, valid_id},
         mods::{self, ModFile},
@@ -129,7 +129,8 @@ pub async fn modrinth_search(
         ..
     } = ctx(&state, &instance_id, kind).await?;
     let id = inst.id.clone();
-    let installed: HashSet<String> = with_db(&state, move |db| db.list_content(&id, kind))
+    let stored = stored_kind(&inst, kind);
+    let installed: HashSet<String> = with_db(&state, move |db| db.list_content(&id, stored))
         .await?
         .into_iter()
         .filter_map(|m| m.project_id)
@@ -374,6 +375,12 @@ pub async fn mod_install(
         dir,
     } = ctx(&state, &instance_id, kind).await?;
     ensure_not_running(&state, &inst.id)?;
+    let stored = stored_kind(&inst, kind);
+    let dir = if stored == kind {
+        dir
+    } else {
+        mods::content_dir(&game_dir_of(&dir), stored)
+    };
     let c = CancellationToken::new();
     tokio::fs::create_dir_all(&dir)
         .await
@@ -402,7 +409,7 @@ pub async fn mod_install(
             ));
         }
         done.push(
-            install_and_record(&state, &inst.id, kind, &dir, &v, item.required_by, &c).await?,
+            install_and_record(&state, &inst.id, stored, &dir, &v, item.required_by, &c).await?,
         );
     }
     Ok(done)
@@ -591,12 +598,180 @@ pub async fn remove_mod(
         inst, kind, dir, ..
     } = ctx(&state, &instance_id, kind).await?;
     ensure_not_running(&state, &inst.id)?;
-    let n = file_name.clone();
-    tauri::async_runtime::spawn_blocking(move || mods::remove(&dir, kind, &n))
+    let (n, d) = (file_name.clone(), dir.clone());
+    tauri::async_runtime::spawn_blocking(move || mods::remove(&d, kind, &n))
         .await
         .map_err(|e| CmdError::new("internal", e.to_string()))??;
+    follow(&inst, kind, &dir, &file_name, None);
     tracing::info!(instance = %inst.id, kind = kind.as_str(), file = %file_name, "content removed");
     with_db(&state, move |db| db.remove_mod(&inst.id, kind, &file_name)).await
+}
+
+/// Where content of `kind` is installed on this instance. On a vanilla
+/// instance the only shader packs are core-shader packs, which the game loads
+/// as resource packs, so they go to resourcepacks/ (and its tab).
+fn stored_kind(inst: &Instance, kind: ContentKind) -> ContentKind {
+    if kind == ContentKind::Shader && inst.loader == Loader::Vanilla {
+        ContentKind::ResourcePack
+    } else {
+        kind
+    }
+}
+
+/// Iris on Modrinth.
+const IRIS_PROJECT: &str = "YL57xq9U";
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Activation {
+    /// File names turned on in the game (resource packs: lowest priority
+    /// first; shaders: at most one).
+    active: Vec<String>,
+    /// Whether the launcher can turn packs of this kind on here.
+    available: bool,
+    /// Why not, or how it works.
+    note: Option<String>,
+}
+
+fn game_dir_of(dir: &std::path::Path) -> PathBuf {
+    dir.parent().map(PathBuf::from).unwrap_or_default()
+}
+
+/// Whether Iris is installed and enabled in the instance.
+async fn has_iris(state: &AppState, inst: &Instance) -> Result<bool> {
+    let id = inst.id.clone();
+    let mods = with_db(state, move |db| db.list_mods(&id)).await?;
+    Ok(mods.iter().any(|m| {
+        m.enabled
+            && (m.project_id.as_deref() == Some(IRIS_PROJECT)
+                || m.file_name.to_ascii_lowercase().starts_with("iris"))
+    }))
+}
+
+/// Which packs of `kind` the game is set to use.
+#[tauri::command]
+pub async fn pack_activation(
+    state: State<'_, AppState>,
+    instance_id: String,
+    kind: ContentKind,
+) -> Result<Activation> {
+    let Ctx {
+        inst, kind, dir, ..
+    } = ctx(&state, &instance_id, Some(kind)).await?;
+    let game = game_dir_of(&dir);
+    match kind {
+        ContentKind::Mod => Err(invalid("mods are turned on with the Enabled switch")),
+        ContentKind::ResourcePack => {
+            let mc = inst.game_version.clone();
+            let active = tauri::async_runtime::spawn_blocking(move || {
+                gameopts::active_resource_packs(&game, &mc)
+            })
+            .await
+            .map_err(|e| CmdError::new("internal", e.to_string()))??;
+            Ok(Activation {
+                active,
+                available: true,
+                note: None,
+            })
+        }
+        ContentKind::Shader => {
+            if inst.loader == Loader::Vanilla {
+                return Ok(Activation {
+                    active: vec![],
+                    available: false,
+                    note: Some("Shader packs need Iris, a mod: create a Fabric or NeoForge instance to use them.".into()),
+                });
+            }
+            let iris = has_iris(&state, &inst).await?;
+            let active =
+                tauri::async_runtime::spawn_blocking(move || gameopts::active_shader(&game))
+                    .await
+                    .map_err(|e| CmdError::new("internal", e.to_string()))??;
+            Ok(Activation {
+                active: active.into_iter().collect(),
+                available: iris,
+                note: (!iris).then(|| {
+                    "Install Iris (Discover → Mods) to turn shader packs on from here.".to_owned()
+                }),
+            })
+        }
+    }
+}
+
+/// Turn a pack on or off in the game's settings (`options.txt` for resource
+/// packs, Iris's settings for shaders). Only one shader pack can be on.
+#[tauri::command]
+pub async fn set_pack_active(
+    state: State<'_, AppState>,
+    instance_id: String,
+    kind: ContentKind,
+    file_name: String,
+    active: bool,
+) -> Result<()> {
+    validate_file_name(Some(kind), &file_name)?;
+    let Ctx {
+        inst, kind, dir, ..
+    } = ctx(&state, &instance_id, Some(kind)).await?;
+    ensure_not_running(&state, &inst.id)?;
+    if active && !dir.join(&file_name).is_file() {
+        return Err(CmdError::new(
+            "not_found",
+            format!("Enable {file_name} first, or install it again."),
+        ));
+    }
+    let game = game_dir_of(&dir);
+    match kind {
+        ContentKind::Mod => return Err(invalid("mods are turned on with the Enabled switch")),
+        ContentKind::ResourcePack => {
+            let mc = inst.game_version.clone();
+            let jar = state.layout.client_jar(&mc).ok();
+            let f = file_name.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                let dv = jar.as_deref().and_then(gameopts::jar_data_version);
+                gameopts::set_resource_pack(&game, &mc, &f, active, dv)
+            })
+            .await
+            .map_err(|e| CmdError::new("internal", e.to_string()))??;
+        }
+        ContentKind::Shader => {
+            if active && !has_iris(&state, &inst).await? {
+                return Err(CmdError::new(
+                    "no_iris",
+                    "Install Iris (Discover → Mods) to turn shader packs on from here.",
+                ));
+            }
+            let f = file_name.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                if active {
+                    gameopts::set_shader(&game, Some(&f))
+                } else {
+                    gameopts::follow_pack(&game, "", true, &f, None)
+                }
+            })
+            .await
+            .map_err(|e| CmdError::new("internal", e.to_string()))??;
+        }
+    }
+    tracing::info!(instance = %inst.id, kind = kind.as_str(), file = %file_name, active, "pack turned {}", if active { "on" } else { "off" });
+    Ok(())
+}
+
+/// Keep the game's pack settings pointing at a renamed (updated) or removed
+/// pack file. Best effort: a settings file we can't edit only means the
+/// player picks the pack again in the game.
+fn follow(inst: &Instance, kind: ContentKind, dir: &std::path::Path, old: &str, new: Option<&str>) {
+    if kind == ContentKind::Mod {
+        return;
+    }
+    if let Err(e) = gameopts::follow_pack(
+        &game_dir_of(dir),
+        &inst.game_version,
+        kind == ContentKind::Shader,
+        old,
+        new,
+    ) {
+        tracing::warn!(error = %e, "pack settings not updated");
+    }
 }
 
 #[derive(Serialize)]
@@ -722,6 +897,7 @@ pub async fn update_mods(
         let new = mods::install_version(&dl, dir, kind, &v, &c).await?;
         if new.file_name != old.file_name {
             mods::remove(dir, kind, &old.file_name)?;
+            follow(inst, kind, dir, &old.file_name, Some(&new.file_name));
             let (i, f) = (inst.id.clone(), old.file_name.clone());
             with_db(&state, move |db| db.remove_mod(&i, kind, &f)).await?;
         }

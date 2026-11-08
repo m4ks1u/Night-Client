@@ -10,6 +10,7 @@ pub mod auth;
 pub mod download;
 pub mod error;
 pub mod fsutil;
+pub mod gameopts;
 pub mod install;
 pub mod instance;
 pub mod java;

@@ -15,8 +15,8 @@ describe("content kinds", () => {
 
   it("explains how to use packs, and the shader mod requirement", () => {
     expect(usageHint("mod", "fabric")).toBeNull();
-    expect(usageHint("resourcepack", "vanilla")).toMatch(/Options → Resource Packs/);
-    expect(usageHint("shader", "vanilla")).toMatch(/core-shader/);
+    expect(usageHint("resourcepack", "vanilla")).toMatch(/In game.*Options → Resource Packs/);
+    expect(usageHint("shader", "vanilla")).toMatch(/core-shader.*Resource packs tab/);
     expect(usageHint("shader", "fabric")).toMatch(/Iris/);
   });
 });

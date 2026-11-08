@@ -17,10 +17,11 @@ export const COMPAT_TAGS = ["fabric", "neoforge", "forge", "quilt", "minecraft",
 
 /** How to use installed content in the game. */
 export function usageHint(kind: ContentKind, loader: Loader): string | null {
-  if (kind === "resourcepack") return "Turn resource packs on in the game under Options → Resource Packs.";
+  if (kind === "resourcepack")
+    return "Switch “In game” to turn a pack on (the last one turned on wins), or use Options → Resource Packs in the game.";
   if (kind === "shader")
     return loader === "vanilla"
-      ? "Vanilla instances can only use core-shader packs, applied like resource packs. Most shader packs need a shader mod such as Iris, on a Fabric, Quilt or NeoForge instance."
-      : "Shader packs need a shader mod, such as Iris (Fabric, Quilt, NeoForge) or OptiFine. Pick the pack in the shader mod's settings in game.";
+      ? "Vanilla instances can only use core-shader packs. They work like resource packs, so they're installed into the Resource packs tab. Most shader packs need a shader mod such as Iris, on a Fabric, Quilt or NeoForge instance."
+      : "Shader packs need a shader mod, such as Iris (Fabric, Quilt, NeoForge) or OptiFine. With Iris installed, switch “In game” to use a pack; only one can be on.";
   return null;
 }

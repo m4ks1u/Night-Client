@@ -4,7 +4,7 @@ import { ArrowUpCircle, Compass, FilePlus2, Info, Loader2, Package, RefreshCw, S
 import { Button } from "./Button";
 import { ModIcon } from "./ModParts";
 import { Badge, Dialog, EmptyState, ErrorState, InlineError, Skeleton, Toggle } from "./ui";
-import { api, toCmdError, type CmdError, type ContentKind, type Instance, type ModRecord, type ModUpdate, type UpdateSummary } from "../lib/ipc";
+import { api, toCmdError, type CmdError, type ContentKind, type Instance, type ModRecord, type ModUpdate, type PackActivation, type UpdateSummary } from "../lib/ipc";
 import { CONTENT, usageHint } from "../lib/content";
 import { formatBytes } from "../lib/format";
 import { useApp } from "../stores/app";
@@ -97,11 +97,14 @@ export function ModsTab({ instance, kind = "mod" }: { instance: Instance; kind?:
   const [updates, setUpdates] = useState<ModUpdate[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [removing, setRemoving] = useState<ModRecord | null>(null);
+  const [activation, setActivation] = useState<PackActivation | null>(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
     try {
       setMods(await api.listMods(instance.id, kind));
+      // Packs: which ones the game is set to use. Not fatal if the settings can't be read.
+      if (kind !== "mod") setActivation(await api.packActivation(instance.id, kind).catch(() => null));
     } catch (e) {
       setLoadError(toCmdError(e));
     }
@@ -188,6 +191,7 @@ export function ModsTab({ instance, kind = "mod" }: { instance: Instance; kind?:
         </p>
       )}
 
+      {activation?.note && <p className="text-xs text-fg-muted">{activation.note}</p>}
       {error && <InlineError error={error} />}
       {notice.length > 0 && (
         <div role="status" className="flex items-start gap-2 rounded-md border border-warning/30 px-3 py-2 text-xs text-warning">
@@ -228,6 +232,17 @@ export function ModsTab({ instance, kind = "mod" }: { instance: Instance; kind?:
                     {m.versionNumber ?? m.fileName} · {formatBytes(m.size)}
                   </p>
                 </div>
+                {activation && kind !== "mod" && (
+                  <div className="w-[8.5rem] whitespace-nowrap">
+                    <Toggle
+                      id={`active-${kind}-${m.fileName}`}
+                      checked={activation.active.includes(m.fileName)}
+                      disabled={!activation.available || !m.enabled || running || busy !== null}
+                      onChange={(v) => void run("activate", () => api.setPackActive(instance.id, kind, m.fileName, v))}
+                      label={activation.active.includes(m.fileName) ? "In game" : "Not in game"}
+                    />
+                  </div>
+                )}
                 <div className="w-28">
                   <Toggle
                     id={`${kind}-${m.fileName}`}
