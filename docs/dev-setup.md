@@ -62,7 +62,15 @@ cargo run --release -p nc-launcher --example poc -- verify 26.3
 Minecraft exits with "Missing required option(s) [accessToken]", which proves that the runtime,
 classpath and main class resolve, without launching the game.
 
-## 6. Microsoft sign-in
+## 6. Version matrix (real network, about 1–2 GB)
+
+```bash
+cargo test --release -p nc-launcher --test matrix -- --ignored --nocapture
+```
+
+`NC_MATRIX_VERSIONS=1.8.9,26.3` limits the set, and `NC_MATRIX_DATA=<dir>` uses another data folder.
+
+## 7. Microsoft sign-in
 
 Sign-in needs your own Azure app registration and Mojang's approval. See [spikes/auth.md](spikes/auth.md).
 
@@ -70,7 +78,7 @@ Sign-in needs your own Azure app registration and Mojang's approval. See [spikes
 NIGHT_CLIENT_MSA_CLIENT_ID=<your-guid> pnpm dev
 ```
 
-## 7. Benchmarks and smoke test
+## 8. Benchmarks and smoke test
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts/bench-startup.ps1 -Runs 5
