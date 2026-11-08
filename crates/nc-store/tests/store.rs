@@ -159,6 +159,7 @@ fn shipped_migration_sql_is_valid_on_an_empty_db() {
     assert_eq!(
         tables,
         [
+            "accounts",
             "download_history",
             "instances",
             "settings",
@@ -416,4 +417,75 @@ fn java_override_set_and_cleared() {
         ..Default::default()
     };
     assert!(s.update_instance(&a.id, p).is_err());
+}
+
+// -------------------------------------------------------------- accounts ----
+
+const A: &str = "0123456789abcdef0123456789abcdef";
+const B: &str = "fedcba9876543210fedcba9876543210";
+
+#[test]
+fn accounts_single_active_switch_and_remove() {
+    let s = Store::open_in_memory().unwrap();
+    assert!(s.active_account().unwrap().is_none());
+    s.upsert_active_account(A, "Alex").unwrap();
+    s.upsert_active_account(&B.to_uppercase(), "Steve").unwrap();
+    let list = s.list_accounts().unwrap();
+    assert_eq!(list.len(), 2);
+    assert_eq!(
+        (list[0].uuid.as_str(), list[0].active),
+        (B, true),
+        "uuid normalised, newest active first"
+    );
+    assert!(!list[1].active);
+
+    assert_eq!(s.set_active_account(A).unwrap().name, "Alex");
+    assert_eq!(s.active_account().unwrap().unwrap().uuid, A);
+    assert!(matches!(
+        s.set_active_account("00000000000000000000000000000000"),
+        Err(StoreError::NotFound)
+    ));
+
+    // Re-signing in updates the name instead of duplicating.
+    s.upsert_active_account(A, "AlexRenamed").unwrap();
+    assert_eq!(s.list_accounts().unwrap().len(), 2);
+
+    // Removing the active account promotes the remaining one.
+    let next = s.remove_account(A).unwrap().unwrap();
+    assert_eq!(next.uuid, B);
+    assert!(next.active);
+    assert_eq!(s.remove_account(B).unwrap(), None);
+    assert!(matches!(s.remove_account(B), Err(StoreError::NotFound)));
+}
+
+#[test]
+fn account_input_is_validated() {
+    let s = Store::open_in_memory().unwrap();
+    assert!(s.upsert_active_account("../../x", "Alex").is_err());
+    assert!(s.upsert_active_account(A, "").is_err());
+    assert!(
+        s.upsert_active_account(A, "Robert'); DROP TABLE accounts;--")
+            .is_err()
+    );
+}
+
+#[test]
+fn jvm_args_are_stored_and_bounded() {
+    let s = Store::open_in_memory().unwrap();
+    let i = s.create_instance(new("J"), |_| false).unwrap();
+    assert!(i.jvm_args.is_empty());
+    let args = vec![
+        "-XX:+UseG1GC".to_string(),
+        "-Dfile.encoding=UTF-8".to_string(),
+    ];
+    let p = InstancePatch {
+        jvm_args: Some(args.clone()),
+        ..Default::default()
+    };
+    assert_eq!(s.update_instance(&i.id, p).unwrap().jvm_args, args);
+    let p = InstancePatch {
+        jvm_args: Some(vec!["-Dx=1".into(); 65]),
+        ..Default::default()
+    };
+    assert!(s.update_instance(&i.id, p).is_err());
 }

@@ -65,6 +65,8 @@ pub struct InstancePatch {
     /// `Some(None)` returns to the official Mojang runtime. The path must be
     /// validated (inspected) by the caller before saving.
     pub java_path: Option<Option<String>>,
+    /// Already validated by the caller (`nc_core::jvmargs`).
+    pub jvm_args: Option<Vec<String>>,
 }
 
 const COLUMNS: &str = "id, name, dir_name, game_version, loader, loader_version, max_memory_mb, java_path, jvm_args, created_at, last_played_at, play_time_seconds";
@@ -234,6 +236,22 @@ impl Store {
             if conn.execute(
                 "UPDATE instances SET java_path = ?1 WHERE id = ?2",
                 params![java, id],
+            )? == 0
+            {
+                return Err(StoreError::NotFound);
+            }
+        }
+        if let Some(args) = patch.jvm_args {
+            if args.len() > 64 || args.iter().any(|a| a.len() > 512) {
+                return Err(StoreError::Invalid(
+                    "too many or too long JVM arguments".into(),
+                ));
+            }
+            let json =
+                serde_json::to_string(&args).map_err(|e| StoreError::Invalid(e.to_string()))?;
+            if conn.execute(
+                "UPDATE instances SET jvm_args = ?1 WHERE id = ?2",
+                params![json, id],
             )? == 0
             {
                 return Err(StoreError::NotFound);

@@ -21,6 +21,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "download_history",
         sql: include_str!("../migrations/0002_download_history.sql"),
     },
+    Migration {
+        version: 3,
+        name: "accounts",
+        sql: include_str!("../migrations/0003_accounts.sql"),
+    },
 ];
 
 pub fn user_version(conn: &Connection) -> Result<u32> {
