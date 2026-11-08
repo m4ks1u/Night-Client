@@ -27,6 +27,22 @@ pub fn ensure_game_dir(layout: &Layout, dir_name: &str) -> Result<PathBuf, Launc
     Ok(dir)
 }
 
+/// Folders owned by Windows that must never hold launcher or game data.
+pub(crate) fn system_dirs() -> Vec<PathBuf> {
+    [
+        "SystemRoot",
+        "windir",
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "ProgramW6432",
+        "ProgramData",
+    ]
+    .iter()
+    .filter_map(std::env::var_os)
+    .map(PathBuf::from)
+    .collect()
+}
+
 /// Validate a user-chosen game directory. It must be an absolute, local or
 /// UNC path that is not a drive root, not inside Windows/Program Files/
 /// ProgramData, and not inside Night Client's managed folders (versions,
@@ -69,18 +85,7 @@ pub fn validate_custom_game_dir(layout: &Layout, input: &str) -> Result<PathBuf,
         return Err(invalid("not a folder"));
     }
 
-    let mut forbidden: Vec<PathBuf> = [
-        "SystemRoot",
-        "windir",
-        "ProgramFiles",
-        "ProgramFiles(x86)",
-        "ProgramW6432",
-        "ProgramData",
-    ]
-    .iter()
-    .filter_map(std::env::var_os)
-    .map(PathBuf::from)
-    .collect();
+    let mut forbidden = system_dirs();
     for sub in [
         "versions",
         "libraries",
