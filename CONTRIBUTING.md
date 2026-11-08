@@ -26,7 +26,7 @@ larger changes before you start.
    ```
    UI changes should also pass the desktop end-to-end scripts in `apps/desktop/e2e` (see
    [docs/dev-setup.md](docs/dev-setup.md)).
-4. Open a pull request. CI must pass. An independent review (human or independent reviewer) is required before merge.
+4. Open a pull request. CI must pass. An independent review is required before merge.
 
 ## Code layout
 

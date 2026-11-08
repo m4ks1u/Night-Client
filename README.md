@@ -1,74 +1,77 @@
 # Night Client
 
-A fast, secure, open-source launcher for **Minecraft: Java Edition** on Windows 10/11 (x64).
+An open-source launcher for **Minecraft: Java Edition** on Windows 10 and 11 (x64), built with Rust, Tauri and React.
 
-> **Status: 0.1.0-beta.1 prepared, not yet released.** No public build has been published.
-> See [docs/stage-8-report.md](docs/stage-8-report.md) for what works today and what blocks the release.
+> **Pre-release development.** No public release is available yet. Microsoft sign-in requires the project's application registration and approval for Minecraft Services API access. Live authentication and gameplay validation are still pending.
 
-Night Client is **not affiliated with, endorsed by or associated with Mojang Studios or Microsoft**.
-"Minecraft" is a trademark of Mojang Synergies AB. You need a Microsoft account that owns
-Minecraft: Java Edition to play. Night Client does not distribute any game files: everything is
-downloaded from official Mojang servers and verified against Mojang's published hashes.
+## Features
 
-## Highlights
+- Vanilla, Fabric, Quilt, NeoForge and Forge instance installation.
+- Separate game folders, saves, settings and content for each instance.
+- Modrinth mods, resource packs, shader packs and `.mrpack` modpacks.
+- Modpack updates that preserve user changes, with journaled recovery after interrupted updates.
+- Managed Java runtimes and configurable per-instance Java and memory settings.
+- Verified, resumable downloads with cancellation and repair.
+- Browser-based Microsoft authentication with PKCE; refresh tokens encrypted locally with Windows DPAPI.
+- Signed application-update support when a release signing key and update channel are configured.
+- Dark interface, keyboard shortcuts, reduced-motion settings and virtualized large lists.
 
-- Official Microsoft sign-in (OAuth 2.0 + PKCE in your browser). No passwords, no offline/cracked mode.
-- Vanilla, Fabric, Quilt, NeoForge and Forge (Minecraft 1.12.2 and newer) instances, each with its own game directory.
-- Official Mojang Java runtimes installed automatically for each version.
-- Modrinth mods (with dependency resolution), resource packs and shader packs, with update checks.
-  Packs can be turned on in the game from the launcher (resource packs; shader packs with Iris).
-- Modrinth modpacks (`.mrpack`), from Discover or a local file, installed as a new instance, and
-  updated in place while keeping your own changes.
-- Verified, resumable, cancellable downloads that never freeze the UI.
-- Signed in-app updates, a small installer (about 6 MB) and about 116 MB of memory at idle.
-- No analytics or telemetry. See [PRIVACY.md](PRIVACY.md) for every connection it makes.
+See [architecture](docs/architecture.md), [security controls and limitations](docs/security-review.md), and [privacy](PRIVACY.md) for implementation details.
 
-## Installing (once released)
+## Run from source
 
-Download `NightClient_<version>_x64-setup.exe` from the GitHub release and run it. It installs for
-your Windows user only, with no administrator rights needed. Releases include `SHA256SUMS.txt`.
-Until the installer is code-signed, Windows SmartScreen may warn on first run. Uninstalling keeps your
-game data; [PRIVACY.md](PRIVACY.md) explains how to remove everything.
+Requirements: Windows 10/11 x64, the Rust toolchain pinned in `rust-toolchain.toml`, Visual Studio 2022 Build Tools with the C++ workload, Node.js 24, pnpm and Microsoft Edge WebView2.
+
+```powershell
+git clone https://github.com/m4ks1u/Night-Client.git
+cd Night-Client
+pnpm install --frozen-lockfile
+pnpm dev
+```
+
+Keep the terminal open while using the development build. Full setup instructions are in [docs/dev-setup.md](docs/dev-setup.md).
+
+### Microsoft sign-in
+
+For development, set the registered Application (client) ID before starting the launcher:
+
+```powershell
+$env:NIGHT_CLIENT_MSA_CLIENT_ID = "YOUR_APPLICATION_CLIENT_ID"
+pnpm dev
+```
+
+The application ID is a public identifier. Minecraft Services API approval is a separate step from registering the application. See [authentication setup](docs/spikes/auth.md). Users of a future configured release will sign in with their own Microsoft accounts; they will not need to register an application.
+
+## Build and test
+
+```powershell
+cargo test --workspace --locked
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+A release installer requires additional signing and channel configuration. See [the release guide](docs/releasing.md). Current verification results and remaining limitations are documented in [the independent acceptance review](docs/independent-audit-acceptance.md). Local benchmark results and methodology are in [docs/benchmarks](docs/benchmarks/README.md); they are not guarantees for other systems.
 
 ## Repository layout
 
-| Path | What lives there |
+| Path | Purpose |
 |---|---|
-| `crates/nc-core` | Pure Minecraft metadata model: manifests, rules, libraries, launch arguments. No I/O. |
-| `crates/nc-launcher` | Services: download engine, installer, Java runtimes, Microsoft auth, game process, logging. |
-| `crates/nc-store` | SQLite database with versioned migrations: instances and settings (never secrets). |
-| `apps/desktop/src-tauri` | Thin Tauri layer: IPC commands, events, capabilities. |
-| `apps/desktop/src` | React + TypeScript UI. |
-| `docs/` | Architecture, setup, spikes, benchmarks, stage reports. |
+| `crates/nc-core` | Minecraft metadata, validation, rules and launch arguments; no I/O. |
+| `crates/nc-launcher` | Downloads, installation, authentication, loaders, Java and game processes. |
+| `crates/nc-store` | SQLite storage and migrations. |
+| `apps/desktop/src-tauri` | Desktop commands, events and capabilities. |
+| `apps/desktop/src` | React and TypeScript interface. |
+| `docs` | Setup, architecture, security, verification and release documentation. |
 
-See [docs/architecture.md](docs/architecture.md) for details.
+## Contributing
 
-## Building
+Read [CONTRIBUTING.md](CONTRIBUTING.md). Report security vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
-Requirements: Windows 10/11 x64, Rust (pinned in `rust-toolchain.toml`), Visual Studio 2022 Build
-Tools with the C++ workload, Node.js 24, and pnpm (via Corepack).
+## License and notice
 
-```bash
-corepack enable pnpm
-pnpm install
-pnpm dev        # run the desktop app with hot reload
-cargo test --workspace
-pnpm test
-```
+Night Client is licensed under [Apache-2.0](LICENSE). Bundled Geist fonts use the [SIL Open Font License](apps/desktop/src/assets/fonts/OFL-Geist.txt).
 
-Full instructions: [docs/dev-setup.md](docs/dev-setup.md).
-
-Microsoft sign-in needs an Azure application ID that Mojang has approved for Minecraft services.
-Builds without one still install and verify games, but cannot sign in or launch.
-See [docs/spikes/auth.md](docs/spikes/auth.md).
-
-## Contributing and security
-
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [SECURITY.md](SECURITY.md): please report vulnerabilities privately.
-- [PRIVACY.md](PRIVACY.md) and [docs/releasing.md](docs/releasing.md).
-
-## License
-
-[Apache-2.0](LICENSE). The bundled Geist fonts are licensed under the
-[SIL Open Font License 1.1](apps/desktop/src/assets/fonts/OFL-Geist.txt).
+Night Client is not affiliated with, endorsed by or associated with Mojang Studios or Microsoft. Minecraft is a trademark of Mojang Synergies AB. A Microsoft account with a valid Minecraft: Java Edition entitlement is required to play. Game files are obtained from their upstream sources; they are not bundled with this repository.
