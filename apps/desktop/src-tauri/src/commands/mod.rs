@@ -7,6 +7,7 @@ pub mod downloads;
 pub mod game;
 pub mod instances;
 pub mod java;
+pub mod mods;
 pub mod versions;
 
 use std::sync::Arc;
