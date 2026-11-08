@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { api } from "../lib/ipc";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Copy, Minus, Square, X } from "lucide-react";
 
@@ -8,6 +9,8 @@ const ctl =
 export function TitleBar() {
   const win = getCurrentWindow();
   const [maximized, setMaximized] = useState(false);
+  const snapTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(snapTimer.current), []);
 
   useEffect(() => {
     let off: (() => void) | undefined;
@@ -25,13 +28,26 @@ export function TitleBar() {
       <div data-tauri-drag-region className="flex items-center gap-2 text-[13px] font-medium tracking-tight text-fg">
         <Logo />
         Night Client
-        <span className="rounded-sm border border-line px-1.5 text-2xs font-medium text-fg-faint">Preview</span>
+        <span className="rounded-sm border border-line px-1.5 text-2xs font-medium text-fg-faint">Beta preview</span>
       </div>
       <div className="flex h-full">
         <button className={ctl} aria-label="Minimize" onClick={() => void win.minimize()}>
           <Minus size={15} strokeWidth={1.75} />
         </button>
-        <button className={ctl} aria-label={maximized ? "Restore" : "Maximize"} onClick={() => void win.toggleMaximize()}>
+        <button
+          className={ctl}
+          aria-label={maximized ? "Restore" : "Maximize"}
+          onClick={() => {
+            clearTimeout(snapTimer.current);
+            void win.toggleMaximize();
+          }}
+          onMouseEnter={() => {
+            clearTimeout(snapTimer.current);
+            // Windows 11 shows snap layouts after a short hover on maximize.
+            snapTimer.current = setTimeout(() => void api.showSnapLayouts().catch(() => {}), 500);
+          }}
+          onMouseLeave={() => clearTimeout(snapTimer.current)}
+        >
           {maximized ? <Copy size={13} strokeWidth={1.75} /> : <Square size={12} strokeWidth={1.75} />}
         </button>
         <button className={`${ctl} hover:bg-[#c42b1c] hover:text-white`} aria-label="Close" onClick={() => void win.close()}>

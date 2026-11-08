@@ -28,7 +28,7 @@ export type SystemInfo = {
   recommendedMemoryMb: number;
   maxMemoryMb: number;
 };
-export type Settings = { defaultMaxMemoryMb: number; downloadConcurrency: number; hideOnLaunch: boolean };
+export type Settings = { defaultMaxMemoryMb: number; downloadConcurrency: number; hideOnLaunch: boolean; reduceMotion: boolean };
 export type VersionItem = { id: string; kind: "release" | "snapshot" | string; releaseTime: string; installed: boolean };
 export type VersionList = { latestRelease: string; latestSnapshot: string; versions: VersionItem[]; fromCache: boolean };
 export type AccountStatus = "ready" | "signedIn" | "expired";
@@ -182,6 +182,8 @@ export const api = {
   diagnostics: () => invoke<Diagnostics>("diagnostics"),
   recentLogs: (lines: number) => invoke<string[]>("recent_logs", { lines }),
   openDataDir: () => invoke<void>("open_data_dir"),
+  /** Opens the Windows 11 snap-layout flyout (no-op unless focused and not maximized). */
+  showSnapLayouts: () => invoke<void>("show_snap_layouts"),
   openLogsDir: () => invoke<void>("open_logs_dir"),
 
   listVersions: (includeSnapshots: boolean) => invoke<VersionList>("list_versions", { includeSnapshots }),

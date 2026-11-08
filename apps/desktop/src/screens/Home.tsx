@@ -1,6 +1,7 @@
 import { Boxes, Clock, Plus } from "lucide-react";
 import { Button } from "../components/Button";
 import { PlayButton } from "../components/InstanceActions";
+import { InstanceArt } from "../components/InstanceArt";
 import { Badge, EmptyState, ErrorState, PageHeader, Skeleton } from "../components/ui";
 import { formatDuration, formatRelative } from "../lib/format";
 import { useApp } from "../stores/app";
@@ -45,9 +46,9 @@ export function Home() {
           if (!first) return null;
           return (
             <div className="flex flex-col gap-8">
-              <section aria-label="Continue playing" className="relative overflow-hidden rounded-lg border border-line bg-surface-1">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_90%_at_100%_0%,var(--color-accent-soft),transparent_60%)]" aria-hidden="true" />
-                <div className="relative flex items-end justify-between gap-6 p-6">
+              <section aria-label="Continue playing" className="grid grid-cols-[minmax(180px,280px)_1fr] overflow-hidden rounded-lg border border-line bg-surface-1">
+                <InstanceArt seed={first.id} loader={first.loader} name={first.name} className="h-full min-h-40 w-full" />
+                <div className="flex items-end justify-between gap-6 p-6">
                   <div className="min-w-0">
                     <p className="text-2xs font-semibold tracking-[0.08em] text-fg-faint uppercase">
                       {first.lastPlayedAt ? "Continue playing" : "Ready to play"}
