@@ -55,25 +55,13 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
     })
     .await?;
 
-    let auth = {
-        let session = lock(&state.session);
-        let s = session.as_ref().ok_or(CmdError::new(
-            "auth_required",
-            "Sign in with Microsoft to play.",
-        ))?;
-        if s.expires_at_unix <= now_unix() as u64 + 60 {
-            return Err(CmdError::new(
-                "auth_reauth_required",
-                "Your session expired. Sign in again.",
-            ));
-        }
-        LaunchAuth {
-            player_name: s.profile.name.clone(),
-            uuid: s.profile.id.clone(),
-            access_token: s.access_token.clone(),
-            xuid: s.xuid.clone(),
-            client_id: crate::state::client_id(),
-        }
+    let session = super::account::active_session(&state).await?;
+    let auth = LaunchAuth {
+        player_name: session.profile.name.clone(),
+        uuid: session.profile.id.clone(),
+        access_token: session.access_token.clone(),
+        xuid: session.xuid.clone(),
+        client_id: crate::state::client_id(),
     };
     {
         let games = lock(&state.games);
@@ -97,7 +85,7 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
             max_memory_mb: instance
                 .max_memory_mb
                 .unwrap_or(settings.default_max_memory_mb),
-            extra_jvm_args: vec![],
+            extra_jvm_args: instance.jvm_args.clone(),
             java_override: instance.java_path.as_ref().map(std::path::PathBuf::from),
         },
     )
