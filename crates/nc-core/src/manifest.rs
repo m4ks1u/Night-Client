@@ -140,6 +140,9 @@ pub struct AssetIndexRef {
 pub struct VersionDownloads {
     #[serde(default)]
     pub client: Option<DownloadInfo>,
+    /// Official Mojang (ProGuard) mappings; used by NeoForge installers.
+    #[serde(default)]
+    pub client_mappings: Option<DownloadInfo>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

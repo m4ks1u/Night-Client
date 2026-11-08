@@ -37,6 +37,24 @@ pub fn resolve(
     version: &VersionJson,
     env: &Environment,
 ) -> Result<Vec<ResolvedLibrary>, CoreError> {
+    resolve_with(version, env, true)
+}
+
+/// Like [`resolve`] but keeps every version of an artifact. Installer
+/// library lists (NeoForge) need several versions side by side, because
+/// different processors put different ones on their own classpaths.
+pub fn resolve_all(
+    version: &VersionJson,
+    env: &Environment,
+) -> Result<Vec<ResolvedLibrary>, CoreError> {
+    resolve_with(version, env, false)
+}
+
+fn resolve_with(
+    version: &VersionJson,
+    env: &Environment,
+    dedupe: bool,
+) -> Result<Vec<ResolvedLibrary>, CoreError> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
 
@@ -69,7 +87,7 @@ pub fn resolve(
 
         let artifact = lib.downloads.as_ref().and_then(|d| d.artifact.as_ref());
         let has_classpath_jar = artifact.is_some() || lib.downloads.is_none();
-        if has_classpath_jar && seen.insert(coord.key()) {
+        if has_classpath_jar && (!dedupe || seen.insert(coord.key())) {
             out.push(from_artifact(
                 lib,
                 &coord,

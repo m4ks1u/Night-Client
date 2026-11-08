@@ -8,10 +8,12 @@
 #![forbid(unsafe_code)]
 
 pub mod error;
+pub mod installprofile;
 pub mod java;
 pub mod jvmargs;
 pub mod launch;
 pub mod libraries;
+pub mod loader;
 pub mod manifest;
 pub mod maven;
 pub mod paths;
