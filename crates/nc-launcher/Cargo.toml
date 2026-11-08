@@ -38,6 +38,7 @@ hex.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 nc-core.workspace = true
+nc-store.workspace = true
 
 [lints]
 workspace = true

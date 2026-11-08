@@ -31,6 +31,10 @@ pub enum LauncherError {
     JavaIncompatible(String),
     #[error("game files are missing ({0}); use Verify files to repair this version")]
     FilesMissing(String),
+    #[error("secure credential storage failed: {0}")]
+    Vault(String),
+    #[error("invalid JVM arguments: {0}")]
+    JvmArgs(#[from] nc_core::jvmargs::JvmArgError),
     #[error("operation cancelled")]
     Cancelled,
     #[error("failed to start the game: {0}")]
@@ -56,6 +60,8 @@ impl LauncherError {
             Self::Spawn(_) => "spawn",
             Self::JavaIncompatible(_) => "java_incompatible",
             Self::FilesMissing(_) => "files_missing",
+            Self::Vault(_) => "vault",
+            Self::JvmArgs(_) => "invalid_jvm_args",
         }
     }
 

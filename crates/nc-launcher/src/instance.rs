@@ -88,6 +88,8 @@ pub async fn prepare_launch(
     req: LaunchRequest,
 ) -> Result<LaunchCommand, LauncherError> {
     let id = &req.version_id;
+    // Re-validate: stored arguments may have been edited outside the app.
+    nc_core::jvmargs::validate(&req.extra_jvm_args)?;
     if !layout.installed_marker(id)?.is_file() {
         return Err(LauncherError::NotInstalled(id.clone()));
     }
