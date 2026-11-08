@@ -55,6 +55,31 @@ after every file has verified.
 - The first non-retryable failure cancels the whole batch. The root cause is reported, not the
   cancellations it triggered.
 
+## Installation, repair and launch pre-flight
+
+- **Install marker semantics:** `versions/<id>/.installed` is deleted when an install or repair
+  starts touching files and written atomically only after every file verifies. A version without the
+  marker is treated as not installed, and Play re-installs it.
+- **Repair report:** the download engine returns the destinations it actually fetched. During a repair
+  these are the missing or damaged files, stored (up to 200) in `download_history.repaired`.
+- **Legacy assets:** `virtual` indexes are laid out in `assets/virtual/<index>` at install time.
+  `map_to_resources` indexes are copied into `<instance>/resources` at launch, hard-linking when
+  possible. Names come from the hash-verified index and are still validated with `safe_join`.
+- **Pre-flight:** `prepare_launch` checks the client jar, every library and the Java runtime exist
+  before building the command.
+- **Queue:** `nc_launcher::queue::Queue` holds pure state: one active job, FIFO pending,
+  de-duplicated. The app's worker (`commands/downloads.rs`) waits on a `Notify`, runs one job at a
+  time, records history and emits `downloads://queue`, `install://progress` and `install://finished`.
+
+## Java
+
+- `nc_core::java`: requirement from `javaVersion` (Java 8 if absent), the compatibility matrix,
+  `release`-file and `-version` parsing, and PE-header architecture detection.
+- `nc_launcher::javadetect`: scans known locations and inspects without executing when a `release`
+  file exists.
+- A per-instance override is stored in `instances.java_path` and validated on save and at launch.
+  An incompatible runtime is refused (`java_incompatible`); a risky one is allowed with a warning in the log.
+
 ## Loader extension point
 
 Loaders produce a version JSON that `inheritsFrom` a vanilla version. `nc_core::profile::merge`

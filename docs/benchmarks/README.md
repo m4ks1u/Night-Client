@@ -76,3 +76,27 @@ request. A regression test was added (`complete_part_file_is_verified_without_a_
 Startup improved from about 450 ms. This is probably because logs now go through a non-blocking file
 writer instead of a redirected stderr pipe, but the cause hasn't been isolated. Memory is unchanged and
 still misses the 150 MB target. Bundle: JS 385 KB (122 KB gzip), CSS 23.5 KB (5.7 KB gzip).
+
+---
+
+## Stage 2 re-run (2026-11-08, same PC, release build)
+
+| Run | UI ready | Private MB | Working set MB | Idle CPU |
+|---|---|---|---|---|
+| 1 | 275 ms | 175.7 | 346.8 | 0 % |
+| 2 | 279 ms | 176.9 | 350.2 | 0 % |
+| 3 | 278 ms | 175.4 | 346.5 | 0 % |
+| 4 | 283 ms | 175.5 | 344.5 | 0 % |
+| 5 | 276 ms | 177.0 | 348.0 | 0 % |
+
+A separate 3-run batch just before this one had an outlier: 218 MB private and 0.35 % CPU. Stage 1's
+first run showed a similar spike, which points to a cold WebView2 GPU process. The background download
+worker sleeps on a `Notify` when idle, and idle CPU stayed at 0 %.
+
+## Version matrix
+
+```bash
+cargo test --release -p nc-launcher --test matrix -- --ignored --nocapture
+```
+
+Results are in `docs/stage-2-report.md`. All 8 versions from 1.5.2 to 26.3 passed in 12 s on a warm cache.

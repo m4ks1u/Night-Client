@@ -6,6 +6,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 2 (installation engine hardening)
+- Legacy asset layouts: pre-1.6 resources copied into the instance, 1.6–1.7 virtual assets; versions 1.5.2 to 26.3 verified by a real-network matrix test.
+- Download queue with cancel and remove, plus a background worker; Downloads screen with persistent history (migration v2).
+- Repair report listing exactly which files were missing or damaged; the install marker is invalidated during repairs.
+- Launch pre-flight that reports missing files instead of starting a broken game.
+- Java detection (managed, JAVA_HOME, PATH, vendor folders, Minecraft Launcher), compatibility rating, per-instance Java with validation.
+- Startup cleanup of stale `.part` and `.tmp` files.
+
 ### Added: Stage 1 (application foundation)
 - `nc-store`: SQLite (WAL) with transactional, versioned migrations, automatic pre-migration backup, and newer-schema protection.
 - Instances: create, rename, per-instance memory, open folder, verify files, delete to a recoverable trash folder; play time and last-played tracking.
