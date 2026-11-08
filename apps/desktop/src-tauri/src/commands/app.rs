@@ -184,3 +184,69 @@ pub fn open_logs_dir(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
 pub(crate) fn open_dir(app: &AppHandle, path: &std::path::Path) -> Result<()> {
     open(app, path)
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CrashNotice {
+    count: usize,
+    newest_unix: Option<u64>,
+}
+
+/// Crash reports written since this was last asked (once per crash).
+#[tauri::command]
+pub async fn take_crash_notice(state: State<'_, AppState>) -> Result<CrashNotice> {
+    let dir = state.log_dir.clone();
+    let (count, newest_unix) =
+        tauri::async_runtime::spawn_blocking(move || nc_launcher::report::take_new_crashes(&dir))
+            .await
+            .map_err(|e| CmdError::new("internal", e.to_string()))?;
+    Ok(CrashNotice { count, newest_unix })
+}
+
+/// Save a zip with the diagnostics summary, recent logs and crash reports
+/// (all redacted) where the user chooses. Returns the saved path, or `None`
+/// if the dialog was cancelled.
+#[tauri::command]
+pub async fn export_diagnostics(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let summary = serde_json::to_string_pretty(&diagnostics(state.clone()).await?)
+        .map_err(|e| CmdError::new("internal", e.to_string()))?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Save diagnostics")
+        .set_file_name("night-client-diagnostics.zip")
+        .add_filter("Zip archive", &["zip"])
+        .save_file(move |p| {
+            let _ = tx.send(p.and_then(|p| p.into_path().ok()));
+        });
+    let Some(mut out) = rx
+        .await
+        .map_err(|e| CmdError::new("internal", e.to_string()))?
+    else {
+        return Ok(None);
+    };
+    if out
+        .extension()
+        .is_none_or(|e| !e.eq_ignore_ascii_case("zip"))
+    {
+        out.set_extension("zip");
+    }
+    let dir = state.log_dir.clone();
+    let path = out.clone();
+    let exported = tauri::async_runtime::spawn_blocking(move || {
+        nc_launcher::report::export_bundle(&path, &summary, &dir)
+    })
+    .await
+    .map_err(|e| CmdError::new("internal", e.to_string()))?
+    .map_err(|e| CmdError::new("io", e.to_string()))?;
+    tracing::info!(
+        logs = exported.log_files,
+        crashes = exported.crash_reports,
+        "diagnostics exported"
+    );
+    Ok(Some(out.display().to_string()))
+}

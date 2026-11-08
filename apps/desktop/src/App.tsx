@@ -6,7 +6,7 @@ import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
 import { Toaster } from "./components/Toaster";
 import { CommandPalette } from "./components/CommandPalette";
-import { events } from "./lib/ipc";
+import { api, events } from "./lib/ipc";
 import { labelForKey } from "./lib/keys";
 import { useApp } from "./stores/app";
 import { navigate, useRouter, type Route } from "./stores/router";
@@ -111,6 +111,18 @@ export default function App() {
   useEffect(() => {
     void useApp.getState().boot();
     const subs = subscribe();
+    api
+      .takeCrashNotice()
+      .then((c) => {
+        if (c.count > 0)
+          toast({
+            tone: "error",
+            title: "Night Client closed unexpectedly last time",
+            body: "A crash report was saved on this PC. You can export it from Diagnostics to report the problem.",
+            action: { label: "Open Diagnostics", route: { name: "diagnostics" } },
+          });
+      })
+      .catch(() => {});
     const onKey = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
       if (e.altKey && e.key === "ArrowLeft") back();

@@ -221,6 +221,9 @@ export const api = {
   checkForUpdate: () => invoke<UpdateInfo>("check_for_update"),
   /** Downloads, verifies and runs the installer; Night Client closes and restarts on success. */
   installUpdate: () => invoke<void>("install_update"),
+  takeCrashNotice: () => invoke<{ count: number; newestUnix: number | null }>("take_crash_notice"),
+  /** Saves a redacted zip through a native save dialog; `null` if cancelled. */
+  exportDiagnostics: () => invoke<string | null>("export_diagnostics"),
   updateInstance: (id: string, patch: { name?: string; maxMemoryMb?: number | null }) =>
     invoke<Instance>("update_instance", { id, patch }),
   deleteInstance: (id: string) => invoke<{ trashPath: string | null }>("delete_instance", { id }),

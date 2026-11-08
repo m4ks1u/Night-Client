@@ -51,6 +51,8 @@
     "allow-relocate-data",
     "allow-check-for-update",
     "allow-install-update",
+    "allow-take-crash-notice",
+    "allow-export-diagnostics",
     "allow-mod-install-plan",
     "allow-mod-install",
     "allow-list-mods",
