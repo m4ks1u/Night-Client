@@ -293,3 +293,23 @@ fn library_with_plain_http_url_is_rejected() {
     let v: VersionJson = serde_json::from_str(json).unwrap();
     assert!(libraries::resolve(&v, &Environment::windows_x64()).is_err());
 }
+
+#[test]
+fn resolve_all_keeps_every_version_for_installer_lists() {
+    let json = r#"{"id":"x","libraries":[
+        {"name":"com.google.code.gson:gson:2.10.1","downloads":{"artifact":{"path":"com/google/code/gson/gson/2.10.1/gson-2.10.1.jar","sha1":"a","size":1,"url":"https://x/a"}}},
+        {"name":"com.google.code.gson:gson:2.8.9","downloads":{"artifact":{"path":"com/google/code/gson/gson/2.8.9/gson-2.8.9.jar","sha1":"b","size":1,"url":"https://x/b"}}}
+    ]}"#;
+    let v: VersionJson = serde_json::from_str(json).unwrap();
+    let env = Environment::windows_x64();
+    assert_eq!(
+        libraries::resolve(&v, &env).unwrap().len(),
+        1,
+        "game classpath keeps one version"
+    );
+    assert_eq!(
+        libraries::resolve_all(&v, &env).unwrap().len(),
+        2,
+        "installer list keeps both"
+    );
+}
