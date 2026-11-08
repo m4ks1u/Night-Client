@@ -62,6 +62,9 @@ pub struct InstancePatch {
     pub name: Option<String>,
     /// `Some(None)` resets to the launcher default.
     pub max_memory_mb: Option<Option<u32>>,
+    /// `Some(None)` returns to the official Mojang runtime. The path must be
+    /// validated (inspected) by the caller before saving.
+    pub java_path: Option<Option<String>>,
 }
 
 const COLUMNS: &str = "id, name, dir_name, game_version, loader, loader_version, max_memory_mb, java_path, jvm_args, created_at, last_played_at, play_time_seconds";
@@ -216,6 +219,21 @@ impl Store {
             if conn.execute(
                 "UPDATE instances SET max_memory_mb = ?1 WHERE id = ?2",
                 params![mem, id],
+            )? == 0
+            {
+                return Err(StoreError::NotFound);
+            }
+        }
+        if let Some(java) = patch.java_path {
+            if java
+                .as_ref()
+                .is_some_and(|p| p.is_empty() || p.len() > 1024)
+            {
+                return Err(StoreError::Invalid("invalid Java path".into()));
+            }
+            if conn.execute(
+                "UPDATE instances SET java_path = ?1 WHERE id = ?2",
+                params![java, id],
             )? == 0
             {
                 return Err(StoreError::NotFound);

@@ -10,11 +10,18 @@ pub struct Migration {
     pub sql: &'static str,
 }
 
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "init",
-    sql: include_str!("../migrations/0001_init.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "init",
+        sql: include_str!("../migrations/0001_init.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "download_history",
+        sql: include_str!("../migrations/0002_download_history.sql"),
+    },
+];
 
 pub fn user_version(conn: &Connection) -> Result<u32> {
     Ok(conn.pragma_query_value(None, "user_version", |r| r.get(0))?)
