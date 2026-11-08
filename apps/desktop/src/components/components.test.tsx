@@ -7,7 +7,8 @@ import { joinArgs } from "./JvmArgs";
 import { labelForKey } from "../lib/keys";
 import { MAX_LOG_LINES, effectiveMemory, useApp } from "../stores/app";
 import { sectionOf, useRouter } from "../stores/router";
-import { api, type Instance } from "../lib/ipc";
+import { api, type Instance, type PlannedMod } from "../lib/ipc";
+import { itemsToInstall } from "./ModParts";
 
 afterEach(cleanup);
 
@@ -255,5 +256,27 @@ describe("command palette render", () => {
     expect(() => render(<CommandPalette open={false} onClose={() => {}} />)).not.toThrow();
     useApp.setState({ instances: { status: "loading" } });
     useApp.setState({ instances: { status: "ready", data: [] } });
+  });
+});
+
+describe("itemsToInstall", () => {
+  const mod = (project: string, requiredBy: string | null = null): PlannedMod => ({
+    version: { id: `${project}-v`, project_id: project, name: project, version_number: "1", version_type: "release", files: [{ filename: `${project}.jar`, size: 1, primary: true }] },
+    requiredBy,
+  });
+  const plan = (install: PlannedMod[]) => ({ install, alreadyInstalled: [], missing: [], conflicts: [], optional: [] });
+  const full = {
+    ...plan([mod("A"), mod("B", "A")]),
+    optional: ["C", "D"],
+    // C needs B (already planned) and E; D needs nothing.
+    options: [plan([mod("C"), mod("B", "C"), mod("E", "C")]), plan([mod("D")])],
+    titles: {},
+  };
+  it("installs only the main plan when nothing optional is chosen", () => {
+    expect(itemsToInstall(full, new Set()).map((m) => m.version.project_id)).toEqual(["A", "B"]);
+  });
+  it("adds a chosen option with its dependencies, each project once", () => {
+    expect(itemsToInstall(full, new Set(["C"])).map((m) => m.version.project_id)).toEqual(["A", "B", "C", "E"]);
+    expect(itemsToInstall(full, new Set(["C", "D"])).map((m) => m.version.project_id)).toEqual(["A", "B", "C", "E", "D"]);
   });
 });
