@@ -6,6 +6,16 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 12 (resource packs and shader packs)
+- Resource packs and shader packs from Modrinth: a content-type switch in Discover, Resource packs and Shaders tabs on every instance (vanilla included), with enable/disable, remove and update checks. Downloads are verified like mods.
+- End-to-end test `e2e/packs.mjs` (real Modrinth), also in the manual CI e2e job.
+
+### Changed
+- Database migration v7 adds a content kind to `instance_mods`; existing rows become mods.
+
+### Fixed
+- With `APPDATA` or `LOCALAPPDATA` unset or relative, data, logs and the token vault were created under the current folder. They now fall back to the profile's `AppData` folders.
+
 ### Added: Stage 11 (older Forge)
 - Forge instances for Minecraft 1.12.2 (build 14.23.5.2851 and newer) through 1.16.5. Libraries shipped inside these installers are extracted and checked against their declared SHA-1, and their processors run on Mojang's Java 17 runtime.
 

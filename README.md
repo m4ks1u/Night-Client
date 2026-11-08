@@ -15,7 +15,7 @@ downloaded from official Mojang servers and verified against Mojang's published 
 - Official Microsoft sign-in (OAuth 2.0 + PKCE in your browser). No passwords, no offline/cracked mode.
 - Vanilla, Fabric, Quilt, NeoForge and Forge (Minecraft 1.12.2 and newer) instances, each with its own game directory.
 - Official Mojang Java runtimes installed automatically for each version.
-- Modrinth mod discovery with dependency resolution and update checks.
+- Modrinth mods (with dependency resolution), resource packs and shader packs, with update checks.
 - Verified, resumable, cancellable downloads that never freeze the UI.
 - Signed in-app updates, a small installer (about 6 MB) and about 116 MB of memory at idle.
 - No analytics or telemetry. See [PRIVACY.md](PRIVACY.md) for every connection it makes.

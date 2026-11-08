@@ -81,13 +81,18 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
 ### Secure authentication storage
 - Microsoft refresh tokens are DPAPI-encrypted per Windows user in `%LOCALAPPDATA%\NightClient\vault`
   (machine-local, never roamed). SQLite holds account metadata only.
+- Since Stage 12, when `LOCALAPPDATA`/`APPDATA` are unset or relative, the vault, logs and data fall
+  back to the profile's `AppData` folders, never to the working directory (`user_folders_are_never_relative`).
 - Minecraft access tokens live only in memory. Decrypted bytes are wiped on the vault's error path.
 - Tested by `dpapi_roundtrip_is_encrypted_at_rest`, `tampered_or_foreign_data_is_rejected` and the
   account tests (rotation, revocation, profile mismatch).
 
 ### Untrusted mod metadata and files
 - Modrinth ids and slugs are validated before use in URLs. File URLs must be HTTPS on
-  `cdn.modrinth.com`. File names must be safe `.jar` names.
+  `cdn.modrinth.com`. File names must be safe names with the kind's extension: `.jar` for mods, `.zip`
+  for resource and shader packs (Stage 12), checked on every command, including toggle and remove.
+- Packs are data for the game or a shader mod; Night Client never opens or extracts them. Shader
+  packs contain GLSL that the shader mod compiles on the GPU.
 - Downloads are verified by size and SHA-1, then SHA-512.
 - Project bodies are never rendered.
 - Jar metadata is read without executing anything. Since Stage 7, a mod id is only kept if it looks

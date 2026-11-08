@@ -146,11 +146,18 @@ appended, and child libraries override parent libraries with the same `group:art
 - `api`: the client. It sends the `User-Agent`, honours rate-limit headers (pauses, one 429 retry),
   caches responses (TTL, at most 256 entries), and validates ids, CDN-only file URLs and file names.
 - `plan`: resolves required dependencies through the `VersionSource` trait, so tests use a fake catalogue.
-- `mods`: the mods folder. It scans with SHA-1/SHA-512, installs with both hashes verified, toggles
-  `.jar.disabled`, removes files, and inspects and imports local jars.
+- `mods`: the content folders. It scans with SHA-1/SHA-512, installs with both hashes verified, toggles
+  `.disabled`, removes files, and inspects and imports local jars (mods only).
 
-The folder is the source of truth. `instance_mods` (migration v5) caches metadata and is re-synced on
-every listing. The app layer (`commands/mods.rs`) re-validates compatibility before every install and
+Content kinds (`nc_core::content::ContentKind`, Stage 12) are mods, resource packs and shader packs.
+Each has a folder (`mods`, `resourcepacks`, `shaderpacks`), a file extension (`.jar`, `.zip`) and the
+Modrinth loader tags it accepts on an instance (`modrinth_loaders`): the instance's mod loaders for mods,
+`minecraft` for resource packs, and `iris`/`optifine`/`vanilla` for shaders (only `vanilla`, meaning
+core-shader packs, on a vanilla instance). Search, version lookup, update checks and `pick_best` take that
+list of tags. Packs are single files, so they skip dependency resolution.
+
+The folder is the source of truth. `instance_mods` (migration v5; `kind` column since v7) caches metadata
+and is re-synced on every listing. The app layer (`commands/mods.rs`) re-validates compatibility before every install and
 blocks changes while the game runs.
 
 ## Instance game folders
