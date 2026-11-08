@@ -156,7 +156,15 @@ fn shipped_migration_sql_is_valid_on_an_empty_db() {
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
-    assert_eq!(tables, ["instances", "settings"]);
+    assert_eq!(
+        tables,
+        [
+            "download_history",
+            "instances",
+            "settings",
+            "sqlite_sequence"
+        ]
+    );
 }
 
 // ------------------------------------------------------------- instances ----
@@ -300,4 +308,112 @@ fn settings_roundtrip_defaults_and_corruption() {
     // Corrupt values fall back to defaults instead of breaking startup.
     s.set_setting("app", &"not an object").unwrap();
     assert_eq!(s.app_settings(), AppSettings::default());
+}
+
+// ----------------------------------------------------- real upgrade path ----
+
+#[test]
+fn shipped_v1_database_upgrades_to_latest_keeping_instances() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("nc.db");
+    let id = {
+        let s = Store::open_with_migrations(&path, &migrations::MIGRATIONS[..1]).unwrap();
+        s.create_instance(new("From v1"), |_| false).unwrap().id
+    };
+    let s = Store::open(&path).unwrap();
+    assert_eq!(
+        s.schema_version().unwrap(),
+        migrations::MIGRATIONS.len() as u32
+    );
+    assert_eq!(s.get_instance(&id).unwrap().name, "From v1");
+    assert!(dir.path().join("nc.db.v1.bak").is_file());
+    assert!(s.list_downloads(10).unwrap().is_empty());
+}
+
+// ------------------------------------------------------------- downloads ----
+
+use nc_store::{DownloadRecord, DownloadStatus, HISTORY_LIMIT};
+
+fn rec(target: &str, status: DownloadStatus) -> DownloadRecord {
+    DownloadRecord {
+        id: 0,
+        kind: "version".into(),
+        target: target.into(),
+        status,
+        repair: false,
+        queued_at: 1,
+        started_at: 2,
+        finished_at: 3,
+        files_downloaded: 10,
+        files_verified: 5,
+        bytes_downloaded: 1024,
+        repaired: vec![],
+        error: None,
+    }
+}
+
+#[test]
+fn download_history_roundtrip_order_and_clear() {
+    let s = Store::open_in_memory().unwrap();
+    s.record_download(&rec("1.21.1", DownloadStatus::Completed))
+        .unwrap();
+    let mut failed = rec("26.3", DownloadStatus::Failed);
+    failed.error = Some("network".into());
+    failed.repair = true;
+    failed.repaired = (0..500).map(|i| format!("libraries/x/{i}.jar")).collect();
+    s.record_download(&failed).unwrap();
+
+    let list = s.list_downloads(50).unwrap();
+    assert_eq!(list.len(), 2);
+    assert_eq!(list[0].target, "26.3", "newest first");
+    assert_eq!(list[0].status, DownloadStatus::Failed);
+    assert!(list[0].repair);
+    assert_eq!(list[0].repaired.len(), 200, "repaired list is capped");
+    assert_eq!(list[0].error.as_deref(), Some("network"));
+    assert_eq!(s.clear_downloads().unwrap(), 2);
+    assert!(s.list_downloads(50).unwrap().is_empty());
+}
+
+#[test]
+fn download_history_is_pruned() {
+    let s = Store::open_in_memory().unwrap();
+    for i in 0..(HISTORY_LIMIT + 15) {
+        s.record_download(&rec(&format!("v{i}"), DownloadStatus::Completed))
+            .unwrap();
+    }
+    let list = s.list_downloads(1000).unwrap();
+    assert_eq!(list.len() as i64, HISTORY_LIMIT);
+    assert_eq!(list[0].target, format!("v{}", HISTORY_LIMIT + 14));
+}
+
+#[test]
+fn invalid_download_record_is_rejected() {
+    let s = Store::open_in_memory().unwrap();
+    let mut r = rec("x", DownloadStatus::Completed);
+    r.kind = String::new();
+    assert!(s.record_download(&r).is_err());
+}
+
+#[test]
+fn java_override_set_and_cleared() {
+    let s = Store::open_in_memory().unwrap();
+    let a = s.create_instance(new("J"), |_| false).unwrap();
+    let p = InstancePatch {
+        java_path: Some(Some(r"C:\Java\jdk-21\bin\javaw.exe".into())),
+        ..Default::default()
+    };
+    assert_eq!(
+        s.update_instance(&a.id, p).unwrap().java_path.as_deref(),
+        Some(r"C:\Java\jdk-21\bin\javaw.exe")
+    );
+    let p = InstancePatch {
+        java_path: Some(None),
+        ..Default::default()
+    };
+    assert_eq!(s.update_instance(&a.id, p).unwrap().java_path, None);
+    let p = InstancePatch {
+        java_path: Some(Some(String::new())),
+        ..Default::default()
+    };
+    assert!(s.update_instance(&a.id, p).is_err());
 }

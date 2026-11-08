@@ -9,6 +9,7 @@
 
 #![forbid(unsafe_code)]
 
+mod downloads;
 mod instances;
 pub mod migrations;
 mod settings;
@@ -21,6 +22,7 @@ use std::{
 
 use rusqlite::Connection;
 
+pub use downloads::{DownloadRecord, DownloadStatus, HISTORY_LIMIT};
 pub use instances::{Instance, InstancePatch, Loader, NewInstance};
 pub use settings::AppSettings;
 
