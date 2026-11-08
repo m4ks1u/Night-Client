@@ -80,6 +80,23 @@ after every file has verified.
 - A per-instance override is stored in `instances.java_path` and validated on save and at launch.
   An incompatible runtime is refused (`java_incompatible`); a risky one is allowed with a warning in the log.
 
+## Accounts and tokens
+
+| What | Where | Lifetime |
+|---|---|---|
+| Microsoft refresh token | DPAPI vault `%LOCALAPPDATA%\NightClient\vault\<uuid>.ncv` | until revoked or the account is removed |
+| Minecraft access token | memory (`AppState.sessions`) | about 24 h, renewed 5 min before expiry |
+| Name, UUID, last used, active | SQLite `accounts` | until the account is removed |
+
+`commands::account::active_session` is the only way to get a token for launching. It returns the
+in-memory session or renews it through `nc_launcher::accounts::refresh` under a lock. Nothing
+secret is ever returned over IPC.
+
+## JVM arguments
+
+`nc_core::jvmargs::parse` splits user text without a shell and validates it against an allowlist.
+The stored vector is validated again in `prepare_launch`. Memory is always set by the launcher.
+
 ## Loader extension point
 
 Loaders produce a version JSON that `inheritsFrom` a vanilla version. `nc_core::profile::merge`

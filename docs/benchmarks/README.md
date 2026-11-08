@@ -100,3 +100,16 @@ cargo test --release -p nc-launcher --test matrix -- --ignored --nocapture
 ```
 
 Results are in `docs/stage-2-report.md`. All 8 versions from 1.5.2 to 26.3 passed in 12 s on a warm cache.
+
+---
+
+## Stage 3 re-run (2026-11-08, same PC, release build)
+
+| Batch | UI ready | Private MB | Idle CPU |
+|---|---|---|---|
+| A (runs 3–5 shown) | 267–295 ms | 176.1–181.6 | 0–0.1 % |
+| B (5 runs) | 344, 517, 325, 330, 307 ms | 176.2, 183.0, 204.3, 220.0, 181.8 | 0–0.12 % |
+
+Batch B was noisier than any previous batch, while batch A matched Stage 2. The new background
+account check runs after first paint, so it isn't part of `ui_ready`. The variance is probably system
+noise, but it hasn't been isolated.
