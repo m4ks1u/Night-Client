@@ -228,6 +228,27 @@ pub struct SearchQuery<'a> {
     pub limit: u32,
 }
 
+/// Modpack loaders Night Client can install (Modrinth tags).
+pub const MODPACK_LOADERS: [&str; 4] = ["fabric", "quilt", "neoforge", "forge"];
+
+/// The newest modpack version to install: a release when there is one,
+/// built for a supported loader, with a `.mrpack` primary file.
+pub fn pick_modpack_version(versions: &[Version]) -> Option<&Version> {
+    let usable = |v: &&Version| {
+        v.loaders
+            .iter()
+            .any(|l| MODPACK_LOADERS.contains(&l.as_str()))
+            && v.primary_file().is_some_and(|f| {
+                f.filename.to_ascii_lowercase().ends_with(".mrpack") && trusted_file_url(&f.url)
+            })
+    };
+    versions
+        .iter()
+        .filter(usable)
+        .find(|v| v.version_type == "release")
+        .or_else(|| versions.iter().find(usable))
+}
+
 /// Validate a Modrinth id or slug before it is put into a URL path.
 pub fn valid_id(s: &str) -> bool {
     !s.is_empty()
@@ -473,6 +494,53 @@ impl Modrinth {
             .append_pair("limit", &limit.clamp(1, 50).to_string());
         let pq = format!("/search?{}", u.query().unwrap_or(""));
         self.get(&pq, Duration::from_secs(300), cancel).await
+    }
+
+    /// Search client modpacks built for a loader Night Client installs.
+    pub async fn search_modpacks(
+        &self,
+        query: &str,
+        sort: SortIndex,
+        offset: u32,
+        limit: u32,
+        cancel: &CancellationToken,
+    ) -> Result<SearchResponse, ModrinthError> {
+        let facets = serde_json::json!([
+            ["project_type:modpack"],
+            MODPACK_LOADERS
+                .iter()
+                .map(|l| format!("categories:{l}"))
+                .collect::<Vec<_>>(),
+            ["client_side:required", "client_side:optional"],
+        ])
+        .to_string();
+        let mut u = url::Url::parse(&format!("{}/search", self.base))
+            .map_err(|e| ModrinthError::Parse(e.to_string()))?;
+        u.query_pairs_mut()
+            .append_pair("query", query)
+            .append_pair("facets", &facets)
+            .append_pair("index", sort.as_str())
+            .append_pair("offset", &offset.min(10_000).to_string())
+            .append_pair("limit", &limit.clamp(1, 50).to_string());
+        let pq = format!("/search?{}", u.query().unwrap_or(""));
+        self.get(&pq, Duration::from_secs(300), cancel).await
+    }
+
+    /// Every version of a project, newest first (modpacks: one per release).
+    pub async fn all_versions(
+        &self,
+        project: &str,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<Version>, ModrinthError> {
+        if !valid_id(project) {
+            return Err(ModrinthError::NotFound);
+        }
+        self.get(
+            &format!("/project/{project}/version"),
+            Duration::from_secs(600),
+            cancel,
+        )
+        .await
     }
 
     pub async fn project(

@@ -1,7 +1,9 @@
 //! Modrinth integration: API client, install planning and mods-folder
-//! operations. CurseForge and modpack sync are out of scope for the beta.
+//! operations, and Modrinth modpack (.mrpack) installs. CurseForge is out of
+//! scope for the beta.
 
 pub mod api;
+pub mod modpack;
 pub mod mods;
 pub mod plan;
 

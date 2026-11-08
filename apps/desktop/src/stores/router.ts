@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import type { ContentKind } from "../lib/ipc";
 
+/** What Discover browses: content for an instance, or modpacks (new instances). */
+export type DiscoverKind = ContentKind | "modpack";
+
 export type InstanceTab = "overview" | "mods" | "resourcepacks" | "shaders" | "log";
 
 export type Route =
@@ -8,7 +11,7 @@ export type Route =
   | { name: "instances" }
   | { name: "new-instance" }
   | { name: "instance"; id: string; tab?: InstanceTab }
-  | { name: "discover"; instanceId?: string; kind?: ContentKind }
+  | { name: "discover"; instanceId?: string; kind?: DiscoverKind }
   | { name: "downloads" }
   | { name: "accounts" }
   | { name: "settings" }

@@ -17,6 +17,7 @@ pub mod libraries;
 pub mod loader;
 pub mod manifest;
 pub mod maven;
+pub mod mrpack;
 pub mod paths;
 pub mod profile;
 pub mod rules;

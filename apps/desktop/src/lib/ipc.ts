@@ -73,6 +73,32 @@ export type SearchHit = {
   installed: boolean;
 };
 export type SearchView = { hits: SearchHit[]; total: number; offset: number };
+export type ModpackHit = Omit<SearchHit, "installed">;
+export type ModpackHits = { hits: ModpackHit[]; total: number; offset: number };
+/** A validated .mrpack held by the backend behind `token`. */
+export type PackPreview = {
+  token: string;
+  name: string;
+  versionId: string;
+  summary: string | null;
+  minecraft: string;
+  loader: LoaderKind;
+  loaderVersion: string | null;
+  label: string;
+  files: number;
+  optionalFiles: number;
+  skipped: number;
+  downloadBytes: number;
+  iconUrl: string | null;
+};
+export type ModpackProgress = {
+  token: string;
+  phase: "files" | "overrides";
+  doneFiles: number;
+  totalFiles: number;
+  doneBytes: number;
+  totalBytes: number;
+};
 export type Category = { name: string; project_type: string; header: string };
 export type MrVersion = {
   id: string;
@@ -252,6 +278,13 @@ export const api = {
   modrinthSearch: (instanceId: string, query: string, category: string | null, sort: SortIndex, offset: number, kind: ContentKind = "mod") =>
     invoke<SearchView>("modrinth_search", { instanceId, query, category, sort, offset, kind }),
   openModrinthPage: (slug: string, kind: ContentKind = "mod") => invoke<void>("open_modrinth_page", { slug, kind }),
+  openModpackPage: (slug: string) => invoke<void>("open_modrinth_page", { slug, modpack: true }),
+  modpackSearch: (query: string, sort: SortIndex, offset: number) => invoke<ModpackHits>("modpack_search", { query, sort, offset }),
+  /** Native file picker; `null` when cancelled. */
+  modpackPreviewFile: () => invoke<PackPreview | null>("modpack_preview_file"),
+  modpackPreviewModrinth: (projectId: string) => invoke<PackPreview>("modpack_preview_modrinth", { projectId }),
+  modpackImport: (token: string, name: string) => invoke<Instance>("modpack_import", { token, name }),
+  modpackCancel: (token: string) => invoke<void>("modpack_cancel", { token }),
   modrinthCategories: (kind: ContentKind = "mod") => invoke<Category[]>("modrinth_categories", { kind }),
   modInstallPlan: (instanceId: string, projectId: string, kind: ContentKind = "mod") =>
     invoke<InstallPlan>("mod_install_plan", { instanceId, projectId, kind }),
@@ -286,4 +319,5 @@ export const events = {
   relocateProgress: on<{ doneBytes: number; totalBytes: number }>("data://relocate-progress"),
   updateAvailable: on<string>("update://available"),
   updateProgress: on<{ doneBytes: number; totalBytes: number | null }>("update://progress"),
+  modpackProgress: on<ModpackProgress>("modpack://progress"),
 };

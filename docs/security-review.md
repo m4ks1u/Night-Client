@@ -57,6 +57,11 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
   after its SHA-1 matches the declared one; a library without a declared hash is refused. Covered by
   `extracts_embedded_libraries_verified_and_skips_processor_outputs`.
 - **Mod jars:** inspected read-only, with 256 KiB per metadata file. Nothing is extracted or executed.
+- **Modpack overrides** (Stage 13): only entries under `overrides/` and `client-overrides/`, each
+  checked with the instance path rules (relative, no `..`, no drive or reserved names, not `.natives`)
+  and joined with `safe_join`. Symlinks abort the import; the total is capped at 2 GiB; files are
+  written as `.part` and renamed. The index itself is capped at 16 MiB. Tested by
+  `overrides_client_wins_and_paths_are_checked` and `reads_and_validates_the_index`.
 - Tested by `extract_rejects_zip_slip`, `extract_enforces_size_cap`,
   `extracts_named_entries_and_fails_instead_of_truncating` and
   `refuses_entry_names_that_escape_the_destination`.
@@ -100,8 +105,17 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
 - Mods are never loaded or run by the launcher. They are only placed in the instance's `mods` folder
   for the game to load.
 - Tested by the Modrinth mock-server tests and `inspects_loader_metadata` (including hostile metadata).
+- **Modpack files** (Stage 13) may come from the hosts Modrinth allows in packs: `cdn.modrinth.com`,
+  `github.com`, `raw.githubusercontent.com` and `gitlab.com`, over HTTPS, without credentials or a
+  port. Every file is verified by size, SHA-1 and SHA-512 from the index; a mismatch deletes the file
+  and discards the new instance. Paths are validated when the index is parsed and again before each
+  download. The WebView only ever passes a token, never a path or URL.
 
 ## Open risks
+- **Modpacks choose their own mods** (Stage 13). The hashes prove the files are the ones the pack
+  lists, not that the pack author's choices are safe. A pack from a local file is as trustworthy as its
+  source; Modrinth packs reference files Modrinth or the listed hosts serve. Overrides can contain any
+  config or resource the game reads, but nothing outside the instance folder.
 - **Token copies in libraries:** HTTP and JSON libraries may hold token copies in buffers that
   `Secret` never owns, and zeroing cannot reach those. The OS also keeps a copy of the game's command
   line, which carries the access token as Minecraft requires.

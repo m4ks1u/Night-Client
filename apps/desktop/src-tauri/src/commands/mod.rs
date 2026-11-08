@@ -8,6 +8,7 @@ pub mod downloads;
 pub mod game;
 pub mod instances;
 pub mod java;
+pub mod modpacks;
 pub mod mods;
 pub mod update;
 pub mod versions;

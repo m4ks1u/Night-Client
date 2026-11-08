@@ -14,6 +14,7 @@ const NAV: { route: Route; label: string; icon: ReactNode; keywords?: string }[]
   { route: { name: "discover" }, label: "Discover mods", icon: <Compass size={15} />, keywords: "modrinth search browse" },
   { route: { name: "discover", kind: "resourcepack" }, label: "Discover resource packs", icon: <Compass size={15} />, keywords: "modrinth textures" },
   { route: { name: "discover", kind: "shader" }, label: "Discover shader packs", icon: <Compass size={15} />, keywords: "modrinth shaders iris" },
+  { route: { name: "discover", kind: "modpack" }, label: "Discover modpacks", icon: <Compass size={15} />, keywords: "modrinth mrpack import" },
   { route: { name: "downloads" }, label: "Downloads", icon: <Download size={15} />, keywords: "queue history" },
   { route: { name: "accounts" }, label: "Accounts", icon: <UserRound size={15} />, keywords: "microsoft sign in login" },
   { route: { name: "settings" }, label: "Settings", icon: <Settings size={15} />, keywords: "preferences memory java" },

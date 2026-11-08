@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, Compass, Download, ExternalLink, Heart, Info, Plus, Search } from "lucide-react";
 import { Button } from "../components/Button";
 import { InstallPlanDialog, ModIcon } from "../components/ModParts";
@@ -7,7 +7,8 @@ import { api, toCmdError, type Category, type CmdError, type ContentKind, type S
 import { COMPAT_TAGS, CONTENT, CONTENT_KINDS, kindAvailable, usageHint } from "../lib/content";
 import { formatCount } from "../lib/format";
 import { useApp } from "../stores/app";
-import { navigate } from "../stores/router";
+import { navigate, type DiscoverKind } from "../stores/router";
+import { ModpackDiscover } from "../components/Modpacks";
 
 const SORTS: { value: SortIndex; label: string }[] = [
   { value: "relevance", label: "Relevance" },
@@ -17,8 +18,34 @@ const SORTS: { value: SortIndex; label: string }[] = [
   { value: "newest", label: "Newest" },
 ];
 
-export function Discover({ instanceId, kind: initialKind = "mod" }: { instanceId?: string; kind?: ContentKind }) {
-  const [kind, setKind] = useState<ContentKind>(initialKind);
+export function Discover({ instanceId, kind: initialKind = "mod" }: { instanceId?: string; kind?: DiscoverKind }) {
+  const [kind, setKind] = useState<DiscoverKind>(initialKind);
+  const kinds: { k: DiscoverKind; label: string }[] = [...CONTENT_KINDS.map((k) => ({ k, label: CONTENT[k].tab })), { k: "modpack", label: "Modpacks" }];
+  const switcher = (
+    <div role="group" aria-label="Content type" className="mb-4 inline-flex rounded-md border border-line bg-surface-1 p-0.5">
+      {kinds.map(({ k, label }) => (
+        <button
+          key={k}
+          type="button"
+          aria-pressed={kind === k}
+          onClick={() => setKind(k)}
+          className={`h-7 rounded px-3 text-xs font-medium transition-colors duration-(--duration-fast) ${
+            kind === k ? "bg-accent-soft text-accent" : "text-fg-muted hover:text-fg"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+  return kind === "modpack" ? (
+    <ModpackDiscover switcher={switcher} />
+  ) : (
+    <ContentDiscover instanceId={instanceId} kind={kind} switcher={switcher} />
+  );
+}
+
+function ContentDiscover({ instanceId, kind, switcher: kindSwitch }: { instanceId?: string; kind: ContentKind; switcher: ReactNode }) {
   const c = CONTENT[kind];
   const instances = useApp((s) => s.instances);
   // Instances that can use this kind: mods need a loader, packs work everywhere.
@@ -70,23 +97,6 @@ export function Discover({ instanceId, kind: initialKind = "mod" }: { instanceId
     [instance, debounced, category, sort, kind],
   );
 
-  const kindSwitch = (
-    <div role="group" aria-label="Content type" className="mb-4 inline-flex rounded-md border border-line bg-surface-1 p-0.5">
-      {CONTENT_KINDS.map((k) => (
-        <button
-          key={k}
-          type="button"
-          aria-pressed={kind === k}
-          onClick={() => setKind(k)}
-          className={`h-7 rounded px-3 text-xs font-medium transition-colors duration-(--duration-fast) ${
-            kind === k ? "bg-accent-soft text-accent" : "text-fg-muted hover:text-fg"
-          }`}
-        >
-          {CONTENT[k].tab}
-        </button>
-      ))}
-    </div>
-  );
   useEffect(() => void search(0), [search]);
 
   if (instances.status === "ready" && modded.length === 0) {

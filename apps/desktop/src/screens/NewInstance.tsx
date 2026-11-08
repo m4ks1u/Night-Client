@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
-import { ArrowLeft, Plus, RefreshCw, WifiOff } from "lucide-react";
+import { ArrowLeft, FileUp, Plus, RefreshCw, WifiOff } from "lucide-react";
+import { useModpackImporter } from "../components/Modpacks";
 import { Button } from "../components/Button";
 import { Card, ErrorState, Field, InlineError, MemorySlider, PageHeader, Skeleton, Toggle, inputClass } from "../components/ui";
 import { api, toCmdError, type CmdError, type LoaderKind } from "../lib/ipc";
@@ -18,6 +19,7 @@ export function NewInstance() {
   const upsert = useApp((s) => s.upsertInstance);
   const installVersion = useApp((s) => s.installVersion);
   const { navigate, back } = useRouter();
+  const importer = useModpackImporter();
 
   const [version, setVersion] = useState("");
   const [loader, setLoader] = useState<LoaderKind>("vanilla");
@@ -74,7 +76,16 @@ export function NewInstance() {
       <Button variant="ghost" size="sm" className="-ml-2 mb-3" icon={<ArrowLeft size={14} />} onClick={back}>
         Back
       </Button>
-      <PageHeader title="New instance" subtitle="Minecraft: Java Edition, plain or with the Fabric, Quilt, NeoForge or Forge mod loader." />
+      <PageHeader
+        title="New instance"
+        subtitle="Minecraft: Java Edition, plain or with the Fabric, Quilt, NeoForge or Forge mod loader."
+        actions={
+          <Button icon={<FileUp size={15} />} disabled={importer.loading !== null} onClick={() => void importer.fromFile()}>
+            Import modpack
+          </Button>
+        }
+      />
+      {importer.dialog}
 
       <form
         className="flex flex-col gap-4"

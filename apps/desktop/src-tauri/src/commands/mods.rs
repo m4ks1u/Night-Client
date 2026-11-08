@@ -177,12 +177,21 @@ pub async fn modrinth_project(state: State<'_, AppState>, project_id: String) ->
 /// Open a project's Modrinth page in the system browser. Only validated
 /// slugs on modrinth.com can be opened this way.
 #[tauri::command]
-pub fn open_modrinth_page(app: AppHandle, slug: String, kind: Option<ContentKind>) -> Result<()> {
+pub fn open_modrinth_page(
+    app: AppHandle,
+    slug: String,
+    kind: Option<ContentKind>,
+    modpack: Option<bool>,
+) -> Result<()> {
     use tauri_plugin_opener::OpenerExt;
     if !valid_id(&slug) {
         return Err(invalid("invalid project"));
     }
-    let kind = kind.unwrap_or_default().as_str();
+    let kind = if modpack == Some(true) {
+        "modpack"
+    } else {
+        kind.unwrap_or_default().as_str()
+    };
     app.opener()
         .open_url(format!("https://modrinth.com/{kind}/{slug}"), None::<&str>)
         .map_err(|e| CmdError::new("io", e.to_string()))

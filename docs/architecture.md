@@ -160,6 +160,22 @@ The folder is the source of truth. `instance_mods` (migration v5; `kind` column 
 and is re-synced on every listing. The app layer (`commands/mods.rs`) re-validates compatibility before every install and
 blocks changes while the game runs.
 
+### Modpacks (Stage 13)
+
+- `nc_core::mrpack` parses and validates `modrinth.index.json` before anything is written: format 1,
+  game `minecraft`, exactly one supported loader (Fabric, Quilt, NeoForge, Forge) or none, at most 4000
+  files and 8 GiB, unique relative paths (case-insensitive) outside `.natives`, hex SHA-1/SHA-512, and
+  HTTPS download URLs on `cdn.modrinth.com`, `github.com`, `raw.githubusercontent.com` or `gitlab.com`
+  (no credentials, no port). Files marked `unsupported` on the client are left out.
+- `nc_launcher::modrinth::modpack`: `read_pack` (index capped at 16 MiB), `fetch_pack` (a Modrinth
+  `.mrpack`, verified, cached as `cache/modpacks/<sha1>.mrpack`), `download_files` (download engine, then
+  SHA-512) and `extract_overrides` (`overrides/`, then `client-overrides/` winning per path; same path
+  rules, symlinks refused, 2 GiB total cap, temp file then rename).
+- `commands/modpacks.rs`: a preview (Modrinth project or native file picker) keeps the validated pack
+  behind a one-time token, so the WebView never supplies a path. Import creates the instance, emits
+  `modpack://progress`, and discards the instance (row, then folder to trash) if anything fails or the
+  import is cancelled. The game and loader are queued for download as for a new instance.
+
 ## Instance game folders
 
 By default an instance's game folder is `<data>/instances/<dir_name>`. A custom folder
@@ -270,5 +286,7 @@ See [security-review.md](security-review.md) for each requirement in the brief, 
 where it is tested.
 
 ## Planned additions
+
+- Modpack updates (the instance does not yet remember which pack and version it came from).
 
 - Authenticode signing of the installer (needs a code-signing certificate).

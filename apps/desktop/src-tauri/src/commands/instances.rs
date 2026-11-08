@@ -129,21 +129,45 @@ pub async fn create_instance(
         input.loader_version.as_deref(),
     )
     .map_err(|_| invalid("choose a valid loader version"))?;
+    let created = create(&state, input.name, &key, input.max_memory_mb).await?;
+    Ok(view(&state, created))
+}
+
+/// Store a new instance for `key` and create its game folder.
+pub(crate) async fn create(
+    state: &AppState,
+    name: String,
+    key: &InstallKey,
+    max_memory_mb: Option<u32>,
+) -> Result<Instance> {
     let instances_dir = state.layout.instances_dir();
     let new = NewInstance {
-        name: input.name,
+        name,
         game_version: key.minecraft.clone(),
         loader: from_kind(key.kind),
         loader_version: key.loader_version.clone(),
-        max_memory_mb: input.max_memory_mb,
+        max_memory_mb,
     };
-    let created = with_db(&state, move |db| {
+    let created = with_db(state, move |db| {
         db.create_instance(new, |dir| instances_dir.join(dir).exists())
     })
     .await?;
     nc_launcher::instance::ensure_game_dir(&state.layout, &created.dir_name)?;
     tracing::info!(id = %created.id, key = %key.to_key(), "instance created");
-    Ok(view(&state, created))
+    Ok(created)
+}
+
+/// Remove an instance that was never used (a failed modpack import): its
+/// row, then its folder to the trash.
+pub(crate) async fn discard(state: &AppState, id: String) {
+    match with_db(state, move |db| db.delete_instance(&id)).await {
+        Ok(gone) => {
+            if let Err(e) = nc_launcher::instance::move_to_trash(&state.layout, &gone.dir_name) {
+                tracing::warn!(error = %e, "discarded instance folder could not be moved to trash");
+            }
+        }
+        Err(e) => tracing::warn!(error = %e.message, "discarding instance failed"),
+    }
 }
 
 #[derive(Deserialize)]

@@ -94,14 +94,14 @@ jobs:
           for ($i = 0; $i -lt 60; $i++) { try { Invoke-WebRequest http://localhost:1420 -UseBasicParsing | Out-Null; break } catch { Start-Sleep 1 } }
       # Throwaway data folders, so the runner's profile is never touched.
       # (ui-smoke needs an installed game and is run locally instead.)
-      # The other scripts make their own throwaway folders; mod-plans, mods-large and packs call the
-      # real Modrinth API.
-      - name: Accessibility, relocation, welcome, crash reports, density, mod plans, large mod list, packs
+      # The other scripts make their own throwaway folders; mod-plans, mods-large, packs and modpacks
+      # call the real Modrinth API (modpacks downloads one ~45 MB pack).
+      - name: Accessibility, relocation, welcome, crash reports, density, mod plans, large mod list, packs, modpacks
         working-directory: apps/desktop
         shell: pwsh
         run: |
           $env:APPDATA = Join-Path $env:RUNNER_TEMP "appdata"; $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "localappdata"
-          foreach ($s in "a11y-audit", "relocate", "welcome", "crash-report", "density", "mod-plans", "mods-large", "packs") {
+          foreach ($s in "a11y-audit", "relocate", "welcome", "crash-report", "density", "mod-plans", "mods-large", "packs", "modpacks") {
             node "e2e/$s.mjs" ../../target/debug/night-client.exe
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }

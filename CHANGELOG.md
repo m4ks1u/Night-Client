@@ -6,6 +6,10 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 13 (Modrinth modpacks)
+- Modrinth modpacks (`.mrpack`): a Modpacks option in Discover (no instance needed) and Import modpack on the New instance screen. A preview shows the loader, file count and download size; import creates a new instance, downloads every file verified by size, SHA-1 and SHA-512, copies the pack's overrides, then queues the game download. Cancelling or any failure removes the half-made instance.
+- End-to-end test `e2e/modpacks.mjs` (real Modrinth), also in the manual CI e2e job.
+
 ### Added: Stage 12 (resource packs and shader packs)
 - Resource packs and shader packs from Modrinth: a content-type switch in Discover, Resource packs and Shaders tabs on every instance (vanilla included), with enable/disable, remove and update checks. Downloads are verified like mods.
 - End-to-end test `e2e/packs.mjs` (real Modrinth), also in the manual CI e2e job.
