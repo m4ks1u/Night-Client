@@ -32,9 +32,13 @@ macro_rules! app_commands {
             commands::app::open_data_dir,
             commands::app::open_logs_dir,
             commands::versions::list_versions,
-            commands::versions::install_version,
-            commands::versions::cancel_install,
-            commands::versions::current_install,
+            commands::downloads::install_version,
+            commands::downloads::cancel_download,
+            commands::downloads::download_queue,
+            commands::downloads::download_history,
+            commands::downloads::clear_download_history,
+            commands::java::detect_java,
+            commands::java::set_instance_java,
             commands::instances::list_instances,
             commands::instances::get_instance,
             commands::instances::create_instance,
@@ -128,6 +132,17 @@ pub fn run() {
                 Layout::new(Layout::default_root()),
                 log_dir.clone(),
             ));
+            commands::downloads::spawn_worker(app.handle().clone());
+            // Remove temp files left by crashed downloads (older than a day,
+            // so a recent interruption can still resume).
+            let root = Layout::default_root();
+            tauri::async_runtime::spawn_blocking(move || {
+                let (n, bytes) =
+                    nc_launcher::fsutil::sweep_stale(&root, std::time::Duration::from_secs(86_400));
+                if n > 0 {
+                    tracing::info!(files = n, bytes, "removed stale temporary files");
+                }
+            });
             create_main_window(app)?;
             Ok(())
         })

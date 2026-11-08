@@ -10,6 +10,7 @@ use nc_launcher::{
     download::{Downloader, DownloaderConfig},
     layout::Layout,
     meta::Meta,
+    queue::Queue,
 };
 use nc_store::{AppSettings, Store};
 
@@ -26,8 +27,10 @@ pub struct AppState {
     /// In memory only until the DPAPI vault lands in Stage 3.
     pub session: Mutex<Option<MinecraftSession>>,
     pub sign_in: Mutex<Option<CancellationToken>>,
-    /// The one running installation: (version id, cancel token).
-    pub install: Mutex<Option<(String, CancellationToken)>>,
+    /// Download queue (one active job, FIFO pending); the worker in
+    /// `commands::downloads` drains it.
+    pub queue: Mutex<Queue>,
+    pub queue_wake: tokio::sync::Notify,
     /// Running games keyed by instance id.
     pub games: Mutex<HashMap<String, GameHandle>>,
 }
@@ -57,7 +60,8 @@ impl AppState {
                 .and_then(|id| Client::new(AuthConfig::new(id), &nc_launcher::user_agent()).ok()),
             session: Mutex::new(None),
             sign_in: Mutex::new(None),
-            install: Mutex::new(None),
+            queue: Mutex::new(Queue::default()),
+            queue_wake: tokio::sync::Notify::new(),
             games: Mutex::new(HashMap::new()),
         }
     }
