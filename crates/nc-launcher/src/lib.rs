@@ -22,6 +22,7 @@ pub mod modrinth;
 pub mod process;
 pub mod queue;
 pub mod relocate;
+pub mod report;
 pub mod sys;
 pub mod vault;
 

@@ -60,6 +60,8 @@ macro_rules! app_commands {
             commands::data::relocate_data,
             commands::update::check_for_update,
             commands::update::install_update,
+            commands::app::take_crash_notice,
+            commands::app::export_diagnostics,
             commands::mods::mod_install_plan,
             commands::mods::mod_install,
             commands::mods::list_mods,
@@ -129,6 +131,27 @@ fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
+/// On a panic, log it and write a redacted crash report next to the logs
+/// (shown to the user on the next start). Nothing is sent anywhere.
+fn install_crash_reporter(log_dir: PathBuf) {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let thread = std::thread::current();
+        let details = format!(
+            "{info}\nthread: {}\nos: {}",
+            thread.name().unwrap_or("<unnamed>"),
+            nc_launcher::sys::system_info().os_version
+        );
+        tracing::error!(panic = %nc_launcher::logging::redact(&info.to_string()), "Night Client crashed");
+        if let Err(e) =
+            nc_launcher::report::write_crash(&log_dir, env!("CARGO_PKG_VERSION"), &details)
+        {
+            tracing::error!(error = %e, "could not write crash report");
+        }
+        previous(info);
+    }));
+}
+
 /// Logs are machine-local: `%LOCALAPPDATA%\NightClient\logs`.
 fn log_dir() -> PathBuf {
     std::env::var_os("LOCALAPPDATA")
@@ -151,6 +174,7 @@ pub fn run() {
             }
         };
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "Night Client starting");
+    install_crash_reporter(log_dir.clone());
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -186,6 +210,18 @@ pub fn run() {
                 .as_ref()
                 .is_some_and(|s| s.app_settings().check_updates);
             commands::update::spawn_startup_check(app.handle().clone(), check_updates);
+            // Debug builds only: e2e/crash-report.mjs uses this to exercise the
+            // crash reporter (a panic on a side thread; the app keeps running).
+            #[cfg(debug_assertions)]
+            if std::env::var_os("NIGHT_CLIENT_TEST_PANIC").is_some() {
+                std::thread::Builder::new()
+                    .name("test-panic".into())
+                    .spawn(|| {
+                        // After the UI has made its startup crash check.
+                        std::thread::sleep(std::time::Duration::from_secs(4));
+                        panic!("test panic with access_token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.c2lnbmF0dXJlLXRlc3Q")
+                    })?;
+            }
             // Remove temp files left by crashed downloads (older than a day,
             // so a recent interruption can still resume).
             tauri::async_runtime::spawn_blocking(move || {

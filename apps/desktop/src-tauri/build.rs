@@ -39,6 +39,8 @@ const COMMANDS: &[&str] = &[
     "relocate_data",
     "check_for_update",
     "install_update",
+    "take_crash_notice",
+    "export_diagnostics",
     "mod_install_plan",
     "mod_install",
     "list_mods",

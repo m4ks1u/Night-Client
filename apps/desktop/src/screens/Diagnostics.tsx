@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, FolderOpen, RefreshCw } from "lucide-react";
+import { Check, Copy, FileArchive, FolderOpen, RefreshCw } from "lucide-react";
 import { Button } from "../components/Button";
 import { LogView } from "../components/LogView";
-import { Card, ErrorState, PageHeader, Skeleton } from "../components/ui";
+import { Card, ErrorState, InlineError, PageHeader, Skeleton } from "../components/ui";
 import { api, toCmdError, type CmdError, type Diagnostics as D } from "../lib/ipc";
 import { formatMemory } from "../lib/format";
 
@@ -26,6 +26,18 @@ export function Diagnostics() {
   const [error, setError] = useState<CmdError | null>(null);
   const [logs, setLogs] = useState<string[] | null>(null);
   const [copied, setCopied] = useState(false);
+  const [exported, setExported] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<CmdError | null>(null);
+
+  async function exportBundle() {
+    setExportError(null);
+    try {
+      const path = await api.exportDiagnostics();
+      if (path) setExported(path);
+    } catch (e) {
+      setExportError(toCmdError(e));
+    }
+  }
   const [webview, setWebview] = useState("…");
 
   const load = useCallback(async () => {
@@ -75,6 +87,9 @@ export function Diagnostics() {
             <Button size="sm" icon={copied ? <Check size={13} /> : <Copy size={13} />} disabled={!data} onClick={() => void copy()}>
               {copied ? "Copied" : "Copy report"}
             </Button>
+            <Button size="sm" icon={<FileArchive size={13} />} onClick={() => void exportBundle()}>
+              Export…
+            </Button>
             <Button size="sm" icon={<RefreshCw size={13} />} onClick={() => void load()}>
               Refresh
             </Button>
@@ -87,6 +102,13 @@ export function Diagnostics() {
         <Skeleton className="h-72" />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-4">
+          {exported && (
+            <p role="status" className="text-xs text-success">
+              Saved to <span className="break-all font-mono">{exported}</span>. It holds this summary, recent launcher logs and crash
+              reports with tokens removed. Nothing is sent automatically.
+            </p>
+          )}
+          {exportError && <InlineError error={exportError} />}
           <Card>
             <dl className="grid grid-cols-[160px_1fr] gap-x-6 gap-y-2 text-[13px]">
               {rows.map(([k, v]) => (
