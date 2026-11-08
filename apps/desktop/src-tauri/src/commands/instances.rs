@@ -117,6 +117,7 @@ pub async fn create_instance(
     state: State<'_, AppState>,
     input: CreateInstance,
 ) -> Result<InstanceView> {
+    super::ensure_not_relocating(&state)?;
     validate_version_id(&input.game_version)?;
     let key = InstallKey::new(
         input.loader,
@@ -182,6 +183,7 @@ pub async fn set_instance_loader_version(
     version: String,
 ) -> Result<InstanceView> {
     validate_instance_id(&id)?;
+    super::ensure_not_relocating(&state)?;
     if lock(&state.games).contains_key(&id) {
         return Err(CmdError::new(
             "busy",
@@ -213,6 +215,7 @@ pub async fn set_instance_game_dir(
     path: Option<String>,
 ) -> Result<InstanceView> {
     validate_instance_id(&id)?;
+    super::ensure_not_relocating(&state)?;
     if lock(&state.games).contains_key(&id) {
         return Err(CmdError::new(
             "busy",
@@ -275,6 +278,7 @@ pub struct Deleted {
 #[tauri::command]
 pub async fn delete_instance(state: State<'_, AppState>, id: String) -> Result<Deleted> {
     validate_instance_id(&id)?;
+    super::ensure_not_relocating(&state)?;
     if lock(&state.games).contains_key(&id) {
         return Err(CmdError::new(
             "busy",

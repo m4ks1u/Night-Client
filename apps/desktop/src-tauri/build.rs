@@ -35,6 +35,8 @@ const COMMANDS: &[&str] = &[
     "modrinth_categories",
     "open_modrinth_page",
     "show_snap_layouts",
+    "data_folder_info",
+    "relocate_data",
     "mod_install_plan",
     "mod_install",
     "list_mods",

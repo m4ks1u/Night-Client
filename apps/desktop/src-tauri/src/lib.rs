@@ -55,6 +55,8 @@ macro_rules! app_commands {
             commands::mods::modrinth_categories,
             commands::mods::open_modrinth_page,
             commands::window::show_snap_layouts,
+            commands::data::data_folder_info,
+            commands::data::relocate_data,
             commands::mods::mod_install_plan,
             commands::mods::mod_install,
             commands::mods::list_mods,
@@ -150,14 +152,17 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
+            let home = Layout::default_root();
+            let root = nc_launcher::relocate::resolve_root(&home);
+            tracing::info!(data = %root.display(), "data folder");
             app.manage(state::AppState::new(
-                Layout::new(Layout::default_root()),
+                home,
+                Layout::new(root.clone()),
                 log_dir.clone(),
             ));
             commands::downloads::spawn_worker(app.handle().clone());
             // Remove temp files left by crashed downloads (older than a day,
             // so a recent interruption can still resume).
-            let root = Layout::default_root();
             tauri::async_runtime::spawn_blocking(move || {
                 let (n, bytes) =
                     nc_launcher::fsutil::sweep_stale(&root, std::time::Duration::from_secs(86_400));

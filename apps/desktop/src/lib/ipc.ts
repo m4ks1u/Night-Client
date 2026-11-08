@@ -102,6 +102,7 @@ export type ModRecord = {
   installedAt: number;
 };
 export type ModUpdate = { fileName: string; current: string | null; versionId: string; versionNumber: string };
+export type DataFolder = { path: string; defaultPath: string; isDefault: boolean; sizeBytes: number };
 export type UpdateSummary = { updated: number; addedDependencies: string[]; missingDependencies: string[] };
 export type Running = { instanceId: string; startedAt: number };
 
@@ -206,6 +207,9 @@ export const api = {
   setInstanceLoaderVersion: (id: string, version: string) => invoke<Instance>("set_instance_loader_version", { id, version }),
   setInstanceGameDir: (id: string, path: string | null) => invoke<Instance>("set_instance_game_dir", { id, path }),
   pickFolder: () => invoke<string | null>("pick_folder"),
+  dataFolderInfo: () => invoke<DataFolder>("data_folder_info"),
+  /** Moves the game data (`null` = back to the default folder) and restarts the app on success. */
+  relocateData: (target: string | null) => invoke<void>("relocate_data", { target }),
   updateInstance: (id: string, patch: { name?: string; maxMemoryMb?: number | null }) =>
     invoke<Instance>("update_instance", { id, patch }),
   deleteInstance: (id: string) => invoke<{ trashPath: string | null }>("delete_instance", { id }),
@@ -251,4 +255,5 @@ export const events = {
   gameStarted: on<string>("game://started"),
   gameLog: on<LogBatch>("game://log"),
   gameExit: on<GameExit>("game://exit"),
+  relocateProgress: on<{ doneBytes: number; totalBytes: number }>("data://relocate-progress"),
 };

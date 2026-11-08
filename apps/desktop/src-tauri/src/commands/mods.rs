@@ -47,6 +47,7 @@ async fn ctx(state: &AppState, id: &str) -> Result<(Instance, &'static str, Path
 }
 
 fn ensure_not_running(state: &AppState, id: &str) -> Result<()> {
+    super::ensure_not_relocating(state)?;
     if lock(&state.games).contains_key(id) {
         Err(CmdError::new(
             "busy",

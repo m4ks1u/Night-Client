@@ -1,10 +1,10 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, FolderOpen } from "lucide-react";
-import { Button } from "../components/Button";
+import { Check } from "lucide-react";
 import { Card, Field, InlineError, MemorySlider, PageHeader, Skeleton, Toggle, inputClass } from "../components/ui";
 import { api, toCmdError, type CmdError, type Settings as SettingsT } from "../lib/ipc";
 import { useApp } from "../stores/app";
 import { JavaList } from "../components/JavaPicker";
+import { DataFolderCard } from "../components/DataFolderCard";
 
 export function Settings() {
   const settings = useApp((s) => s.settings);
@@ -106,17 +106,7 @@ export function Settings() {
             </Field>
           </Card>
 
-          <Card title="Storage">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-[13px] font-medium">Data folder</p>
-                <p className="truncate font-mono text-xs text-fg-faint" title={info?.dataDir}>{info?.dataDir}</p>
-              </div>
-              <Button size="sm" icon={<FolderOpen size={13} />} onClick={() => void api.openDataDir()}>
-                Open
-              </Button>
-            </div>
-          </Card>
+          <DataFolderCard />
 
           <Card title="Keyboard shortcuts">
             <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-2 text-[13px]">

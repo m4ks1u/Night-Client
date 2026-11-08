@@ -228,6 +228,15 @@ describe("toasts", () => {
 
 import { CommandPalette } from "./CommandPalette";
 import { updateNotices } from "./ModsTab";
+import { targetFor } from "./DataFolderCard";
+
+describe("data folder target", () => {
+  it("puts the data in a Night Client subfolder of the picked folder", () => {
+    expect(targetFor("D:\\Games")).toBe("D:\\Games\\Night Client");
+    expect(targetFor("D:\\")).toBe("D:\\Night Client");
+    expect(targetFor("E:\\Night Client\\")).toBe("E:\\Night Client");
+  });
+});
 
 describe("mod update notices", () => {
   it("reports added and missing dependencies, and nothing otherwise", () => {
