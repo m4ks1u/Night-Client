@@ -6,6 +6,17 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 9 (backlog)
+- Quilt instances (Quilt Meta profiles, Maven `.sha1` verification). Quilt instances also accept Fabric mods in Discover, install plans, updates and local imports.
+- Install plans list a mod's optional dependencies, unticked; a ticked one is installed with its own requirements.
+- Java installed to custom folders or other drives is found through the vendors' registry entries.
+- Compact layout setting (Settings → Appearance).
+- End-to-end tests `e2e/density.mjs` and `e2e/mod-plans.mjs`; the manual CI e2e job now also runs welcome, crash-report, density and mod-plans.
+
+### Changed
+- Database migration v6 removes the fixed list of loaders from the `instances` table (mod rows are kept).
+- The User-Agent and security links name the repository, https://github.com/m4ks1u/Night-Client.
+
 ### Added: Stage 8 (public beta preparation), version 0.1.0-beta.1
 - Signed in-app updates: Settings → Updates (check, notes, install), plus an optional automatic check at start that shows a notification.
 - Crash reports saved on this PC (redacted), with a notice on the next start.

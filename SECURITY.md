@@ -8,7 +8,7 @@ them through the signed in-app updater (Settings → Updates). Older betas are n
 ## Reporting a vulnerability
 
 Please **do not open a public issue**. Use GitHub's
-[private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability)
+[private vulnerability reporting](https://github.com/m4ks1u/Night-Client/security/advisories/new)
 on this repository. Include steps to reproduce and the impact you expect.
 
 We aim to acknowledge reports within 3 working days and to agree a disclosure timeline with you.
