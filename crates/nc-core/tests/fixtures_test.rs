@@ -33,6 +33,7 @@ fn paths() -> LaunchPaths {
         libraries_dir: root.join("libraries"),
         natives_dir: root.join(r"instances\poc\natives"),
         client_jar: root.join(r"versions\x\x.jar"),
+        game_assets: root.join("assets"),
         log_config: Some(root.join(r"assets\log_configs\client.xml")),
     }
 }
