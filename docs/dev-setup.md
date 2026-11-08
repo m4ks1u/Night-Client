@@ -108,3 +108,18 @@ powershell -ExecutionPolicy Bypass -File scripts/bench-startup.ps1 -Runs 5
 
 Debug builds accept `NIGHT_CLIENT_DEVTOOLS_PORT=<port>`, which exposes WebView2 DevTools for
 automated UI tests. Release builds never open a debugging port.
+
+A debug build (`cargo build -p night-client`) loads its UI from the Vite dev server at
+`localhost:1420`, so keep `pnpm dev` running in `apps/desktop`. Close any running Night Client, then run
+from `apps/desktop`:
+
+```bash
+node e2e/ui-smoke.mjs ../../target/debug/night-client.exe
+```
+```bash
+node e2e/a11y-audit.mjs ../../target/debug/night-client.exe
+```
+
+Both scripts take an optional screenshot folder as a second argument. They use your real data folder,
+create a temporary instance and delete it again, and exit non-zero on any failed check. The smoke test
+needs vanilla 1.21.1 to be installed already, because it runs a verify job.

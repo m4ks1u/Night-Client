@@ -145,3 +145,18 @@ Results are in `docs/stage-4-report.md`.
 
 Startup is unchanged. The Modrinth client is constructed at startup but makes no network requests until used. Memory
 shows the same occasional ~205 MB runs seen since Stage 3.
+
+## Stage 6 re-run (2026-11-08, same PC, release build)
+
+| Run | UI ready | Private MB | Working set MB | Idle CPU |
+|---|---|---|---|---|
+| 1 | 273 ms | 176.3 | 354.5 | 0 % |
+| 2 | 257 ms | 187.4 | 359.4 | 0 % |
+| 3 | 256 ms | 176.9 | 350.8 | 0 % |
+| 4 | 254 ms | 183.8 | 352.3 | 0 % |
+| 5 | 260 ms | 176.1 | 347.1 | 0 % |
+
+Bundle: JS 476 KB (148 KB gzip), CSS 28 KB (6.5 KB gzip); `night-client.exe` 21.1 MB. Startup did not get
+slower with the palette, toasts and artwork, and is slightly faster than the Stage 5 batches (single
+runs on a desktop PC, so treat the difference as noise). Memory is unchanged and still misses the
+150 MB target.
