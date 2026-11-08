@@ -13,6 +13,7 @@ pub enum LoaderKind {
     Quilt,
     #[serde(rename = "neoforge")]
     NeoForge,
+    Forge,
 }
 
 impl LoaderKind {
@@ -22,6 +23,7 @@ impl LoaderKind {
             Self::Fabric => "fabric",
             Self::Quilt => "quilt",
             Self::NeoForge => "neoforge",
+            Self::Forge => "forge",
         }
     }
 
@@ -31,6 +33,7 @@ impl LoaderKind {
             "fabric" => Some(Self::Fabric),
             "quilt" => Some(Self::Quilt),
             "neoforge" => Some(Self::NeoForge),
+            "forge" => Some(Self::Forge),
             _ => None,
         }
     }
@@ -43,11 +46,13 @@ pub fn mod_loaders(loader: &str) -> &'static [&'static str] {
         "fabric" => &["fabric"],
         "quilt" => &["quilt", "fabric"],
         "neoforge" => &["neoforge"],
+        "forge" => &["forge"],
         _ => &[],
     }
 }
 
-/// What to install: `vanilla:<mc>`, `fabric:<mc>:<loader>`, `quilt:<mc>:<loader>`, `neoforge:<mc>:<neoforge>`.
+/// What to install: `vanilla:<mc>`, `fabric:<mc>:<loader>`, `quilt:<mc>:<loader>`, `neoforge:<mc>:<neoforge>`,
+/// `forge:<mc>:<forge>` (the Forge version without the `<mc>-` prefix).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InstallKey {
     pub kind: LoaderKind,
@@ -120,6 +125,7 @@ impl InstallKey {
             (LoaderKind::Fabric, Some(v)) => format!("fabric-loader-{v}-{}", self.minecraft),
             (LoaderKind::Quilt, Some(v)) => format!("quilt-loader-{v}-{}", self.minecraft),
             (LoaderKind::NeoForge, Some(v)) => format!("neoforge-{v}"),
+            (LoaderKind::Forge, Some(v)) => format!("{}-forge-{v}", self.minecraft),
             _ => self.minecraft.clone(),
         }
     }
@@ -130,6 +136,7 @@ impl InstallKey {
             (LoaderKind::Fabric, Some(v)) => format!("Fabric {v} · {}", self.minecraft),
             (LoaderKind::Quilt, Some(v)) => format!("Quilt {v} · {}", self.minecraft),
             (LoaderKind::NeoForge, Some(v)) => format!("NeoForge {v} · {}", self.minecraft),
+            (LoaderKind::Forge, Some(v)) => format!("Forge {v} · {}", self.minecraft),
             _ => format!("Minecraft {}", self.minecraft),
         }
     }
@@ -177,6 +184,43 @@ pub fn neoforge_versions_for<'a>(
     v
 }
 
+/// Forge's installer uses the supported `install_profile` spec 1 from
+/// Minecraft 1.17 on; older Forge installers are spec 0.
+pub fn forge_supported(minecraft: &str) -> bool {
+    let mut parts = minecraft.split('.');
+    match (parts.next(), parts.next()) {
+        (Some("1"), Some(minor)) => minor.parse::<u32>().is_ok_and(|m| m >= 17),
+        // Year-based versions (26.x) are all newer.
+        (Some(year), Some(_)) => year.len() == 2 && year.parse::<u32>().is_ok_and(|y| y >= 25),
+        _ => false,
+    }
+}
+
+/// Forge versions for `minecraft` from Maven's `<mc>-<forge>` list, without
+/// the prefix, newest first. Empty for versions whose installer is not spec 1.
+pub fn forge_versions_for<'a>(
+    minecraft: &str,
+    all: impl IntoIterator<Item = &'a str>,
+) -> Vec<String> {
+    if !forge_supported(minecraft) {
+        return Vec::new();
+    }
+    let prefix = format!("{minecraft}-");
+    let mut v: Vec<String> = all
+        .into_iter()
+        .filter_map(|v| v.strip_prefix(&prefix))
+        .filter(|rest| {
+            !rest.is_empty()
+                && rest
+                    .split('.')
+                    .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+        })
+        .map(str::to_owned)
+        .collect();
+    v.sort_by(|a, b| version_cmp(b, a));
+    v
+}
+
 /// Compare dotted numeric versions (non-numeric parts compare as text).
 pub fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     let split = |s: &str| {
@@ -218,6 +262,7 @@ mod tests {
             ("fabric:1.21.1:0.17.2", "fabric-loader-0.17.2-1.21.1"),
             ("neoforge:1.21.1:21.1.265", "neoforge-21.1.265"),
             ("quilt:1.21.1:0.29.2", "quilt-loader-0.29.2-1.21.1"),
+            ("forge:1.20.1:47.4.29", "1.20.1-forge-47.4.29"),
             (
                 "fabric:1.12.2:0.14.0+build.1",
                 "fabric-loader-0.14.0+build.1-1.12.2",
@@ -229,7 +274,6 @@ mod tests {
         }
         for bad in [
             "",
-            "forge:1.20.1:47",
             "vanilla:1.21.1:x",
             "fabric:1.21.1",
             "quilt:1.21.1",
@@ -245,7 +289,8 @@ mod tests {
     fn quilt_runs_fabric_mods_but_not_the_reverse() {
         assert_eq!(mod_loaders("quilt"), ["quilt", "fabric"]);
         assert_eq!(mod_loaders("fabric"), ["fabric"]);
-        assert!(mod_loaders("vanilla").is_empty() && mod_loaders("forge").is_empty());
+        assert!(mod_loaders("vanilla").is_empty() && mod_loaders("rift").is_empty());
+        assert_eq!(mod_loaders("forge"), ["forge"]);
     }
 
     #[test]
@@ -280,6 +325,31 @@ mod tests {
             Some("26.3.0.101")
         );
         assert!(neoforge_versions_for("1.12.2", all).is_empty());
+    }
+
+    #[test]
+    fn forge_mapping() {
+        let all = [
+            "1.20.1-47.4.5",
+            "1.20.1-47.4.29",
+            "1.20.1-47.4.4",
+            "1.20.10-99.0.0",
+            "1.20.1-47.1.0-pre1",
+            "1.21.1-52.1.21",
+            "1.16.5-36.2.42",
+            "1.7.10-10.13.4.1614-1.7.10",
+        ];
+        assert_eq!(
+            forge_versions_for("1.20.1", all),
+            ["47.4.29", "47.4.5", "47.4.4"],
+            "sorted, exact game version, no odd suffixes"
+        );
+        assert!(
+            forge_versions_for("1.16.5", all).is_empty(),
+            "spec 0 installers"
+        );
+        assert!(forge_supported("1.17.1") && forge_supported("1.21") && forge_supported("26.3"));
+        assert!(!forge_supported("1.16.5") && !forge_supported("1.12.2") && !forge_supported("x"));
     }
 
     #[test]

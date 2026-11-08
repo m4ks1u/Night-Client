@@ -7,7 +7,7 @@ import { api, toCmdError, type CmdError, type Instance } from "../lib/ipc";
 import { LOADER_NAME } from "../lib/keys";
 import { useApp } from "../stores/app";
 
-/** Loader version of a Fabric/Quilt/NeoForge instance, with a change dialog. */
+/** Loader version of a Fabric/Quilt/NeoForge/Forge instance, with a change dialog. */
 export function LoaderCard({ instance, disabled }: { instance: Instance; disabled: boolean }) {
   const upsert = useApp((s) => s.upsertInstance);
   const [open, setOpen] = useState(false);

@@ -1,4 +1,4 @@
-//! Real-network loader installs (Fabric, Quilt, NeoForge). Ignored by default.
+//! Real-network loader installs (Fabric, Quilt, NeoForge, Forge). Ignored by default.
 //!
 //! ```text
 //! cargo test --release -p nc-launcher --test loaders -- --ignored --nocapture
@@ -7,7 +7,7 @@
 //!
 //! Installs the newest stable loader for each case, prepares the launch
 //! command (nothing is started), and checks: the main class is present in a
-//! classpath or module-path jar, the per-version client jar exists, NeoForge
+//! classpath or module-path jar, the per-version client jar exists, NeoForge or Forge
 //! produced its patched client, and no placeholder is left unexpanded.
 
 #![allow(clippy::unwrap_used)]
@@ -57,6 +57,9 @@ async fn loader_matrix() {
         (LoaderKind::Quilt, "26.3"),
         (LoaderKind::NeoForge, "1.21.1"),
         (LoaderKind::NeoForge, "26.3"),
+        (LoaderKind::Forge, "1.20.1"),
+        (LoaderKind::Forge, "1.21.1"),
+        (LoaderKind::Forge, "26.3"),
     ] {
         if let Ok(only) = std::env::var("NC_LOADERS")
             && !only.split(',').any(|k| k.trim() == kind.as_str())
@@ -135,9 +138,14 @@ async fn loader_matrix() {
         assert!(missing.is_empty(), "{id}: missing jars {missing:?}");
 
         let mut note = String::new();
-        if kind == LoaderKind::NeoForge {
-            // 20.x/21.x: neoforge-<v>-client.jar; 26.x: minecraft-client-patched-<v>.jar.
+        if matches!(kind, LoaderKind::NeoForge | LoaderKind::Forge) {
+            // NeoForge 20.x/21.x: neoforge-<v>-client.jar; 26.x: minecraft-client-patched-<v>.jar.
+            // Forge: forge-<mc>-<v>-client.jar.
             let candidates = [
+                format!(
+                    "net/minecraftforge/forge/{mc}-{0}/forge-{mc}-{0}-client.jar",
+                    lv.version
+                ),
                 format!(
                     "net/neoforged/neoforge/{0}/neoforge-{0}-client.jar",
                     lv.version

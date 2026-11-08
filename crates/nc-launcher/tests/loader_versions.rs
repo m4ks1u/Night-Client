@@ -30,6 +30,7 @@ fn meta(server: &MockServer, dir: &std::path::Path) -> Meta {
     m.fabric_meta_url = server.uri();
     m.quilt_meta_url = server.uri();
     m.neoforge_maven_url = server.uri();
+    m.forge_maven_url = server.uri();
     m
 }
 
@@ -154,5 +155,32 @@ async fn quilt_versions_are_sorted_newest_first() {
             .await
             .unwrap()
             .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn forge_versions_strip_the_game_version_and_skip_old_installers() {
+    let s = MockServer::start().await;
+    let xml = "<metadata><versioning><versions>\
+        <version>1.20.1-47.4.5</version><version>1.20.1-47.4.29</version>\
+        <version>1.16.5-36.2.42</version><version>1.21.1-52.1.21</version></versions></versioning></metadata>";
+    Mock::given(path("/net/minecraftforge/forge/maven-metadata.xml"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(xml))
+        .mount(&s)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = meta(&s, dir.path());
+    let c = CancellationToken::new();
+    let v = loaders::versions(&m, LoaderKind::Forge, "1.20.1", &c)
+        .await
+        .unwrap();
+    let names: Vec<_> = v.iter().map(|x| x.version.as_str()).collect();
+    assert_eq!(names, ["47.4.29", "47.4.5"]);
+    assert!(
+        loaders::versions(&m, LoaderKind::Forge, "1.16.5", &c)
+            .await
+            .unwrap()
+            .is_empty(),
+        "spec 0 installers are not offered"
     );
 }

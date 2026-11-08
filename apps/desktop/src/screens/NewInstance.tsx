@@ -74,7 +74,7 @@ export function NewInstance() {
       <Button variant="ghost" size="sm" className="-ml-2 mb-3" icon={<ArrowLeft size={14} />} onClick={back}>
         Back
       </Button>
-      <PageHeader title="New instance" subtitle="Minecraft: Java Edition, plain or with the Fabric, Quilt or NeoForge mod loader." />
+      <PageHeader title="New instance" subtitle="Minecraft: Java Edition, plain or with the Fabric, Quilt, NeoForge or Forge mod loader." />
 
       <form
         className="flex flex-col gap-4"
@@ -138,7 +138,9 @@ export function NewInstance() {
                     ? "Lightweight loader. Many performance and quality-of-life mods use it."
                     : loader === "quilt"
                       ? "Fork of Fabric. Runs most Fabric mods as well as Quilt mods."
-                      : "Successor to Forge, used by many large content mods."}
+                      : loader === "neoforge"
+                        ? "Successor to Forge, used by many large content mods."
+                        : "The original mod loader. Night Client supports it for Minecraft 1.17 and newer."}
               </p>
             </div>
 

@@ -173,6 +173,7 @@ describe("labelForKey", () => {
     expect(labelForKey("vanilla:1.21.1")).toBe("Minecraft 1.21.1");
     expect(labelForKey("fabric:1.21.1:0.17.2")).toBe("Fabric 0.17.2 · 1.21.1");
     expect(labelForKey("quilt:1.21.1:0.29.2")).toBe("Quilt 0.29.2 · 1.21.1");
+    expect(labelForKey("forge:1.20.1:47.4.29")).toBe("Forge 47.4.29 · 1.20.1");
     expect(labelForKey("neoforge:26.3:26.3.0.101")).toBe("NeoForge 26.3.0.101 · 26.3");
     expect(labelForKey("1.12.2")).toBe("Minecraft 1.12.2");
   });

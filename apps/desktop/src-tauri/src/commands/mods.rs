@@ -30,10 +30,11 @@ async fn ctx(state: &AppState, id: &str) -> Result<(Instance, &'static str, Path
         Loader::Fabric => "fabric",
         Loader::Quilt => "quilt",
         Loader::Neoforge => "neoforge",
+        Loader::Forge => "forge",
         Loader::Vanilla => {
             return Err(CmdError::new(
                 "no_loader",
-                "Vanilla instances can't use mods. Create a Fabric, Quilt or NeoForge instance.",
+                "Vanilla instances can't use mods. Create a Fabric, Quilt, NeoForge or Forge instance.",
             ));
         }
     };
