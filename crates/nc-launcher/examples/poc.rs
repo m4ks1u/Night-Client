@@ -99,6 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 libraries_dir: layout.libraries_dir(),
                 natives_dir: layout.natives_dir("poc", id)?,
                 client_jar: layout.client_jar(id)?,
+                game_assets: layout.assets_dir(),
                 log_config: None,
             };
             let cp = launch::classpath(&libs, &paths);

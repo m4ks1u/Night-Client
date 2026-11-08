@@ -27,6 +27,10 @@ pub enum LauncherError {
     NotInstalled(String),
     #[error("no official Java runtime `{0}` is available for Windows x64")]
     RuntimeUnavailable(String),
+    #[error("Java problem: {0}")]
+    JavaIncompatible(String),
+    #[error("game files are missing ({0}); use Verify files to repair this version")]
+    FilesMissing(String),
     #[error("operation cancelled")]
     Cancelled,
     #[error("failed to start the game: {0}")]
@@ -50,6 +54,8 @@ impl LauncherError {
             Self::NotInstalled(_) => "not_installed",
             Self::RuntimeUnavailable(_) => "runtime_unavailable",
             Self::Spawn(_) => "spawn",
+            Self::JavaIncompatible(_) => "java_incompatible",
+            Self::FilesMissing(_) => "files_missing",
         }
     }
 

@@ -45,6 +45,13 @@ pub struct Installed {
     pub client_jar: PathBuf,
     pub log_config: Option<PathBuf>,
     pub files: Summary,
+    /// The version was already marked installed before this run (a repair).
+    pub was_installed: bool,
+    /// Files that were missing or damaged and were re-downloaded during a
+    /// repair, relative to the data directory (at most 200 listed).
+    pub repaired: Vec<String>,
+    /// Number of files re-downloaded during a repair (may exceed the list).
+    pub repaired_count: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -83,6 +90,16 @@ pub async fn install_vanilla(
                 field: "assetIndex",
             })?;
     let assets = meta.asset_index(&asset_ref, cancel).await?;
+
+    // From here on the version is "being installed": drop the marker so an
+    // interrupted repair can never leave a version that looks complete.
+    let marker = layout.installed_marker(id)?;
+    let was_installed = marker.is_file();
+    if was_installed {
+        tokio::fs::remove_file(&marker)
+            .await
+            .map_err(LauncherError::io(&marker))?;
+    }
 
     // Java first: it is needed to launch and is the second-largest download.
     let req = java::requirement(&version);
@@ -153,17 +170,25 @@ pub async fn install_vanilla(
         None => None,
     };
 
-    if assets.is_virtual || assets.map_to_resources {
-        // Pre-1.7 asset layouts need an extra copy step; out of Stage 0 scope.
-        tracing::warn!(%id, "legacy virtual asset layout is not supported yet");
-    }
-
     let files = {
         let e = emit(Phase::GameFiles);
         meta.dl.fetch_all(tasks, cancel, e).await?
     };
 
-    let marker = layout.installed_marker(id)?;
+    // Pre-1.7 "virtual" indexes (e.g. `legacy` for 1.6.x) expect the objects
+    // under their real names in assets/virtual/<index>. Pre-1.6
+    // (`map_to_resources`) copies go into each instance at launch instead.
+    if assets.is_virtual {
+        let dest = layout.assets_dir().join("virtual").join(&asset_ref.id);
+        nc_core::paths::validate_segment(&asset_ref.id)?;
+        let root = layout.assets_dir();
+        let idx = assets.clone();
+        let n = tokio::task::spawn_blocking(move || materialize_assets(&idx, &root, &dest))
+            .await
+            .map_err(|e| LauncherError::Spawn(e.to_string()))??;
+        tracing::info!(%id, files = n, "virtual assets laid out");
+    }
+
     let body = serde_json::to_vec(&Marker {
         id: id.to_owned(),
         launcher_version: env!("CARGO_PKG_VERSION").into(),
@@ -175,6 +200,27 @@ pub async fn install_vanilla(
         .map_err(|e| LauncherError::Spawn(e.to_string()))?
         .map_err(LauncherError::io(marker))?;
 
+    let root = layout.root().to_path_buf();
+    let (repaired, repaired_count) = if was_installed {
+        let list = files
+            .fetched
+            .iter()
+            .take(200)
+            .map(|p| {
+                p.strip_prefix(&root)
+                    .unwrap_or(p)
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect();
+        (list, files.downloaded_files)
+    } else {
+        (Vec::new(), 0)
+    };
+    if was_installed {
+        tracing::info!(%id, repaired = repaired_count, "verification finished");
+    }
+
     Ok(Installed {
         version,
         libraries: libs,
@@ -182,7 +228,40 @@ pub async fn install_vanilla(
         client_jar,
         log_config,
         files,
+        was_installed,
+        repaired,
+        repaired_count,
     })
+}
+
+/// Place asset objects under their logical names (`<dest>/<name>`), hard-linking
+/// when possible and copying otherwise. Names come from the (hash-verified)
+/// index but are still validated as relative paths. Returns files written.
+pub fn materialize_assets(
+    index: &nc_core::manifest::AssetIndex,
+    assets_root: &std::path::Path,
+    dest: &std::path::Path,
+) -> Result<u64, LauncherError> {
+    let mut written = 0;
+    for (name, obj) in &index.objects {
+        let src = obj
+            .object_path()
+            .map(|p| fsutil::safe_join(assets_root, &p))
+            .ok_or_else(|| nc_core::CoreError::UnsafePath(obj.hash.clone()))??;
+        let target = fsutil::safe_join(dest, name)?;
+        if std::fs::metadata(&target).is_ok_and(|m| m.len() == obj.size) {
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(LauncherError::io(parent))?;
+        }
+        let _ = std::fs::remove_file(&target);
+        if std::fs::hard_link(&src, &target).is_err() {
+            std::fs::copy(&src, &target).map_err(LauncherError::io(&target))?;
+        }
+        written += 1;
+    }
+    Ok(written)
 }
 
 /// Extract legacy natives jars (pre-1.19) into `natives_dir`.
