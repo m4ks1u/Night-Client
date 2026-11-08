@@ -138,9 +138,9 @@ fn extract_entries(
         if written > max_total {
             drop(out);
             let _ = std::fs::remove_file(&target);
-            return Err(LauncherError::Extract(
-                fsutil::ExtractError::TooLarge(max_total).into(),
-            ));
+            return Err(LauncherError::Extract(fsutil::ExtractError::TooLarge(
+                max_total,
+            )));
         }
     }
     Ok(())
