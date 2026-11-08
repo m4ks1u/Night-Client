@@ -113,3 +113,23 @@ Results are in `docs/stage-2-report.md`. All 8 versions from 1.5.2 to 26.3 passe
 Batch B was noisier than any previous batch, while batch A matched Stage 2. The new background
 account check runs after first paint, so it isn't part of `ui_ready`. The variance is probably system
 noise, but it hasn't been isolated.
+
+---
+
+## Stage 4 re-run (2026-11-08, same PC, release build)
+
+| Batch | UI ready | Private MB | Idle CPU |
+|---|---|---|---|
+| A (runs 2–5 shown) | 294–311 ms | 174.4, 207.9, 208.0, 215.8 | 0–0.29 % |
+| B (5 runs) | 299, 317, 290, 308, 307 ms | 183.5, 175.2, 176.8, 183.7, 177.4 | 0 % |
+
+One run in batch A had 8 processes instead of 7 (an extra WebView2 utility process). Memory is
+unchanged against earlier stages and still above target.
+
+## Loader matrix
+
+```bash
+cargo test --release -p nc-launcher --test loaders -- --ignored --nocapture
+```
+
+Results are in `docs/stage-4-report.md`.

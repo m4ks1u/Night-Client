@@ -2,8 +2,8 @@
 
 A fast, secure, open-source launcher for **Minecraft: Java Edition** on Windows 10/11 (x64).
 
-> **Status: Stage 3, accounts and Java arguments.** Not ready for players yet.
-> See [docs/stage-3-report.md](docs/stage-3-report.md) for what works today.
+> **Status: Stage 4, Fabric and NeoForge.** Not ready for players yet.
+> See [docs/stage-4-report.md](docs/stage-4-report.md) for what works today.
 
 Night Client is **not affiliated with, endorsed by or associated with Mojang Studios or Microsoft**.
 "Minecraft" is a trademark of Mojang Synergies AB. You need a Microsoft account that owns

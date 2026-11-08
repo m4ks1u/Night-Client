@@ -1,5 +1,14 @@
 # Spike: NeoForge installation (Stage 0)
 
+> **Outcome (Stage 4):** option B is implemented in `crates/nc-launcher/src/loaders/neoforge.rs` and
+> verified against real servers. NeoForge 21.1.265 (six client processors) installs in 10.7 s, and
+> 26.3.0.101 (a single `PROCESS_MINECRAFT_JAR` processor, a format that appeared after this spike)
+> installs in 2.6 s.
+>
+> One finding the static analysis missed: the installer library list contains **several versions of
+> the same artifact**, because different processors use different Gson and ASM versions, so it must not
+> be de-duplicated. See `docs/stage-4-report.md`. Booting the game is still unverified (needs sign-in).
+
 **Question:** run the official installer headless, or execute its processors natively?
 
 ## What was examined

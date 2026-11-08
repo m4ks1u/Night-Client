@@ -6,6 +6,16 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 4 (mod loaders, instance folders)
+- Fabric instances: Fabric Meta profiles, Maven `.sha1` verification for loader and intermediary jars, loader-version picker.
+- NeoForge instances: native installer-processor execution (spec 1), verified installer and libraries, Mojang mappings supplied by the launcher; NeoForge 21.x and 26.x verified.
+- Loader choice in New instance; change the loader version of an existing instance.
+- Custom game folder per instance (migration v4) with a native folder picker and strict path validation.
+- Downloads and the queue use loader-aware install keys and labels.
+
+### Fixed
+- Log redaction no longer hides diagnostic error codes (`error_code=…`, `code="auth_…"`).
+
 ### Added: Stage 3 (authentication persistence, JVM arguments)
 - DPAPI-encrypted token vault in %LOCALAPPDATA% (machine-local); refresh tokens never touch SQLite or logs.
 - Persistent, multiple Microsoft accounts with switching and removal (migration v3, metadata only).
