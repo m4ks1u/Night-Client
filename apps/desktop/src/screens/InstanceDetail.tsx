@@ -8,6 +8,7 @@ import { api, toCmdError, type CmdError, type Instance } from "../lib/ipc";
 import { formatDuration, formatMemory, formatRelative } from "../lib/format";
 import { effectiveMemory, useApp, useVersionJob } from "../stores/app";
 import { InstanceJava } from "../components/JavaPicker";
+import { JvmArgsCard } from "../components/JvmArgs";
 import { navigate, useRouter } from "../stores/router";
 
 export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: "overview" | "log" }) {
@@ -132,6 +133,8 @@ function Overview({ instance }: { instance: Instance }) {
       </Card>
 
       <InstanceJava instance={instance} disabled={running} />
+
+      <JvmArgsCard instance={instance} disabled={running} />
 
       <Card title="Files">
         <div className="flex flex-wrap items-center justify-between gap-3">

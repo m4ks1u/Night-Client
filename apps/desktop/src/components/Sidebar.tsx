@@ -62,7 +62,9 @@ export function Sidebar() {
         </span>
         <span className="min-w-0">
           <span className="block truncate text-[13px] font-medium">{account ? account.name : "Not signed in"}</span>
-          <span className="block text-2xs text-fg-faint">{account ? "Microsoft account" : "Sign in to play"}</span>
+          <span className={`block text-2xs ${account?.status === "expired" ? "text-warning" : "text-fg-faint"}`}>
+            {!account ? "Sign in to play" : account.status === "expired" ? "Sign in again" : "Microsoft account"}
+          </span>
         </span>
       </button>
     </nav>

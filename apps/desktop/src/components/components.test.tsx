@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ProgressBar } from "./ProgressBar";
 import { Button } from "./Button";
 import { EmptyState, MemorySlider, Toggle } from "./ui";
+import { joinArgs } from "./JvmArgs";
 import { MAX_LOG_LINES, effectiveMemory, useApp } from "../stores/app";
 import { sectionOf, useRouter } from "../stores/router";
 import { api, type Instance } from "../lib/ipc";
@@ -18,6 +19,7 @@ const inst = (over: Partial<Instance> = {}): Instance => ({
   loaderVersion: null,
   maxMemoryMb: null,
   javaPath: null,
+  jvmArgs: [],
   createdAt: 0,
   lastPlayedAt: null,
   playTimeSeconds: 0,
@@ -151,5 +153,12 @@ describe("router", () => {
     useRouter.getState().back();
     useRouter.getState().back(); // no-op at the start of history
     expect(useRouter.getState().route).toEqual({ name: "home" });
+  });
+});
+
+describe("joinArgs", () => {
+  it("quotes arguments the backend splitter would otherwise break up", () => {
+    expect(joinArgs(["-XX:+UseG1GC", "-Dname=hello world", 'q"x', ""])).toBe('-XX:+UseG1GC "-Dname=hello world" "q\\"x" ""');
+    expect(joinArgs([])).toBe("");
   });
 });

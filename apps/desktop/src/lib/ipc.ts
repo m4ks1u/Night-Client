@@ -31,7 +31,8 @@ export type SystemInfo = {
 export type Settings = { defaultMaxMemoryMb: number; downloadConcurrency: number; hideOnLaunch: boolean };
 export type VersionItem = { id: string; kind: "release" | "snapshot" | string; releaseTime: string; installed: boolean };
 export type VersionList = { latestRelease: string; latestSnapshot: string; versions: VersionItem[]; fromCache: boolean };
-export type Account = { name: string; uuid: string; expiresAt: number };
+export type AccountStatus = "ready" | "signedIn" | "expired";
+export type Account = { uuid: string; name: string; active: boolean; lastUsedAt: number | null; status: AccountStatus };
 
 export type Instance = {
   id: string;
@@ -42,6 +43,7 @@ export type Instance = {
   loaderVersion: string | null;
   maxMemoryMb: number | null;
   javaPath: string | null;
+  jvmArgs: string[];
   createdAt: number;
   lastPlayedAt: number | null;
   playTimeSeconds: number;
@@ -148,11 +150,15 @@ export const api = {
     invoke<Instance>("update_instance", { id, patch }),
   deleteInstance: (id: string) => invoke<{ trashPath: string | null }>("delete_instance", { id }),
   openInstanceDir: (id: string) => invoke<void>("open_instance_dir", { id }),
+  setInstanceJvmArgs: (id: string, args: string) => invoke<Instance>("set_instance_jvm_args", { id, args }),
 
   account: () => invoke<Account | null>("account"),
   signIn: () => invoke<Account>("sign_in"),
   cancelSignIn: () => invoke<void>("cancel_sign_in"),
-  signOut: () => invoke<void>("sign_out"),
+  listAccounts: () => invoke<Account[]>("list_accounts"),
+  checkActiveAccount: () => invoke<Account | null>("check_active_account"),
+  switchAccount: (uuid: string) => invoke<Account>("switch_account", { uuid }),
+  removeAccount: (uuid: string) => invoke<Account | null>("remove_account", { uuid }),
 
   runningInstances: () => invoke<Running[]>("running_instances"),
   launchInstance: (id: string) => invoke<void>("launch_instance", { id }),

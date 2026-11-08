@@ -60,10 +60,10 @@ export function PlayButton({ instance, size = "md", showProgress = true }: { ins
         {job.state === "queued" ? "Remove from queue" : "Cancel"}
       </Button>
     );
-  } else if (!account) {
+  } else if (!account || account.status === "expired") {
     button = (
       <Button variant="secondary" size={size} icon={<LogIn size={14} />} onClick={() => void playInstance(instance)}>
-        Sign in to play
+        {account ? "Sign in again" : "Sign in to play"}
       </Button>
     );
   } else {

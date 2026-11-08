@@ -10,7 +10,7 @@ import { navigate } from "../stores/router";
  */
 export async function playInstance(i: Instance): Promise<CmdError | null> {
   const app = useApp.getState();
-  if (!app.account) {
+  if (!app.account || app.account.status === "expired") {
     navigate({ name: "accounts" });
     return null;
   }
@@ -24,6 +24,11 @@ export async function playInstance(i: Instance): Promise<CmdError | null> {
     useApp.getState().markStarted(i.id);
     return null;
   } catch (e) {
-    return toCmdError(e);
+    const err = toCmdError(e);
+    if (err.code.startsWith("auth_")) {
+      // The saved sign-in changed state (expired, removed): refresh the chip.
+      api.account().then((a) => useApp.getState().setAccount(a)).catch(() => {});
+    }
+    return err;
   }
 }
