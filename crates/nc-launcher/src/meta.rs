@@ -19,6 +19,8 @@ pub struct Meta {
     pub manifest_url: String,
     /// Fabric Meta API base (no trailing slash).
     pub fabric_meta_url: String,
+    /// Quilt Meta API base (no trailing slash).
+    pub quilt_meta_url: String,
     /// NeoForge Maven releases base (no trailing slash).
     pub neoforge_maven_url: String,
 }
@@ -30,6 +32,7 @@ impl Meta {
             layout,
             manifest_url: VERSION_MANIFEST_URL.into(),
             fabric_meta_url: "https://meta.fabricmc.net".into(),
+            quilt_meta_url: "https://meta.quiltmc.org".into(),
             neoforge_maven_url: "https://maven.neoforged.net/releases".into(),
         }
     }

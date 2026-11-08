@@ -3,9 +3,9 @@ import { api, toCmdError, type CmdError, type LoaderKind, type LoaderVersion } f
 import { LOADER_NAME } from "../lib/keys";
 import { InlineError, Skeleton, inputClass } from "./ui";
 
-/** Segmented control for Vanilla / Fabric / NeoForge (radio group semantics). */
+/** Segmented control for Vanilla / Fabric / Quilt / NeoForge (radio group semantics). */
 export function LoaderSegments({ value, onChange }: { value: LoaderKind; onChange: (v: LoaderKind) => void }) {
-  const kinds: LoaderKind[] = ["vanilla", "fabric", "neoforge"];
+  const kinds: LoaderKind[] = ["vanilla", "fabric", "quilt", "neoforge"];
   return (
     <div role="radiogroup" aria-label="Mod loader" className="inline-flex self-start rounded-md border border-line bg-surface-2 p-0.5">
       {kinds.map((k) => (

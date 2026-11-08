@@ -325,4 +325,19 @@ mod tests {
             "beta"
         );
     }
+
+    #[test]
+    fn quilt_instances_take_fabric_mods_but_fabric_takes_no_quilt_mods() {
+        let fabric = v("fab", "A", "release", &[]);
+        let mut quilt = v("qui", "A", "release", &[]);
+        quilt.loaders = vec!["quilt".into()];
+        assert_eq!(
+            pick_best(vec![fabric.clone()], "quilt", "1.21.1")
+                .unwrap()
+                .id,
+            "fab"
+        );
+        assert!(pick_best(vec![quilt.clone()], "fabric", "1.21.1").is_none());
+        assert!(pick_best(vec![fabric, quilt], "neoforge", "1.21.1").is_none());
+    }
 }

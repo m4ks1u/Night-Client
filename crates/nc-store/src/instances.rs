@@ -8,6 +8,7 @@ use crate::{Result, Store, StoreError, now_unix};
 pub enum Loader {
     Vanilla,
     Fabric,
+    Quilt,
     Neoforge,
 }
 
@@ -16,6 +17,7 @@ impl Loader {
         match self {
             Self::Vanilla => "vanilla",
             Self::Fabric => "fabric",
+            Self::Quilt => "quilt",
             Self::Neoforge => "neoforge",
         }
     }
@@ -24,6 +26,7 @@ impl Loader {
         match s {
             "vanilla" => Some(Self::Vanilla),
             "fabric" => Some(Self::Fabric),
+            "quilt" => Some(Self::Quilt),
             "neoforge" => Some(Self::Neoforge),
             _ => None,
         }

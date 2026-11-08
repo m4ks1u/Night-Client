@@ -1,4 +1,4 @@
-//! Loader version listing against mock Fabric Meta / NeoForge Maven.
+//! Loader version listing against mock Fabric Meta / Quilt Meta / NeoForge Maven.
 
 #![allow(clippy::unwrap_used)]
 
@@ -28,6 +28,7 @@ fn meta(server: &MockServer, dir: &std::path::Path) -> Meta {
         Layout::new(dir),
     );
     m.fabric_meta_url = server.uri();
+    m.quilt_meta_url = server.uri();
     m.neoforge_maven_url = server.uri();
     m
 }
@@ -108,6 +109,48 @@ async fn neoforge_versions_from_maven_metadata_with_offline_fallback() {
     assert_eq!(again[0].version, "26.3.0.101");
     assert!(
         loaders::versions(&m, LoaderKind::Vanilla, "1.21.1", &c)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn quilt_versions_are_sorted_newest_first() {
+    let s = MockServer::start().await;
+    // Quilt Meta v3 returns loaders in no particular order.
+    Mock::given(method("GET"))
+        .and(path("/v3/versions/loader/1.21.1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"loader":{"version":"0.20.0-beta.9","build":9},"hashed":{}},
+            {"loader":{"version":"0.29.2","build":2},"hashed":{}},
+            {"loader":{"version":"0.24.0","build":0},"hashed":{}},
+            {"loader":{"version":"0.29.3-beta.1","build":1},"hashed":{}}
+        ])))
+        .mount(&s)
+        .await;
+    Mock::given(path("/v3/versions/loader/1.5.2"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&s)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = meta(&s, dir.path());
+    let c = CancellationToken::new();
+    let v = loaders::versions(&m, LoaderKind::Quilt, "1.21.1", &c)
+        .await
+        .unwrap();
+    let flags: Vec<_> = v.iter().map(|x| (x.version.as_str(), x.stable)).collect();
+    assert_eq!(
+        flags,
+        [
+            ("0.29.3-beta.1", false),
+            ("0.29.2", true),
+            ("0.24.0", true),
+            ("0.20.0-beta.9", false)
+        ]
+    );
+    assert!(
+        loaders::versions(&m, LoaderKind::Quilt, "1.5.2", &c)
             .await
             .unwrap()
             .is_empty()
