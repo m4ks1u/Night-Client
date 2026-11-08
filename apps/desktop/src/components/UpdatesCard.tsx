@@ -91,7 +91,7 @@ export function UpdatesCard({ autoCheck, onAutoCheck }: Props) {
           checked={autoCheck}
           onChange={onAutoCheck}
           label="Check for updates automatically"
-          description="Shortly after start, ask the release feed whether a newer version exists. This sends your Night Client version and Windows architecture; nothing else."
+          description="Shortly after start, ask the release feed whether a newer version exists. The request carries your Night Client version and Windows architecture, and, like any connection, your IP address."
         />
       </div>
     </Card>

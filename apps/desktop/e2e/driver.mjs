@@ -16,13 +16,14 @@ const ERROR_HOOK = `(window.__err=JSON.parse(sessionStorage.getItem("__err")||"[
  * Start the app and attach to it. `env` adds environment variables (for
  * example APPDATA/LOCALAPPDATA pointing at a throwaway folder).
  */
-export async function launch(exe, { port = 9350, outDir = ".", env = {} } = {}) {
+export async function launch(exe, { port = 9350, outDir = ".", env = {}, welcome = "skip" } = {}) {
   const app = spawn(exe, [], { env: { ...process.env, ...env, NIGHT_CLIENT_DEVTOOLS_PORT: String(port) }, stdio: "ignore" });
-  return connect(port, { outDir, app });
+  return connect(port, { outDir, app, welcome });
 }
 
 /** Attach to an app that is already running with a DevTools port (e.g. after it restarted itself). */
-export async function connect(port, { outDir = ".", app = null } = {}) {
+/** `welcome: "skip"` dismisses the first-run welcome if it is showing; "keep" leaves it. */
+export async function connect(port, { outDir = ".", app = null, welcome = "skip" } = {}) {
   let target;
   for (let i = 0; i < 80 && !target; i++) {
     await sleep(250);
@@ -111,6 +112,18 @@ export async function connect(port, { outDir = ".", app = null } = {}) {
     app?.kill();
     // Debug builds load the UI from the Vite dev server; without it WebView2 shows an error page.
     throw new Error(`the app page did not load. Is the Vite dev server running (pnpm dev)? ${e.message.slice(0, 120)}`);
+  }
+  if (welcome === "skip") {
+    // The welcome opens once settings have loaded; give it a moment.
+    for (let i = 0; i < 20; i++) {
+      // innerText follows CSS text-transform ("STEP 1 OF 4"), hence /i.
+      if (await js(`/Step [0-9] of [0-9]/i.test(document.querySelector("dialog[open]")?.innerText || "")`)) {
+        await d.click(`/^Skip$/`, "dialog[open] button");
+        await sleep(400);
+        break;
+      }
+      await sleep(150);
+    }
   }
   return d;
 }

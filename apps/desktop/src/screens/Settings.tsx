@@ -6,6 +6,8 @@ import { useApp } from "../stores/app";
 import { JavaList } from "../components/JavaPicker";
 import { DataFolderCard } from "../components/DataFolderCard";
 import { UpdatesCard } from "../components/UpdatesCard";
+import { Button } from "../components/Button";
+import { useWelcome } from "../components/Welcome";
 
 export function Settings() {
   const settings = useApp((s) => s.settings);
@@ -18,21 +20,28 @@ export function Settings() {
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const ids = { conc: useId(), hide: useId(), motion: useId(), gpu: useId() };
 
+  // Follow changes made elsewhere (e.g. the welcome) unless an edit here is
+  // still waiting to be saved, so a stale draft never overwrites them.
+  const pending = useRef(false);
   useEffect(() => {
-    if (settings && !draft) setDraft(settings);
-  }, [settings, draft]);
+    if (settings && !pending.current) setDraft(settings);
+  }, [settings]);
 
   // Save shortly after the last change so dragging a slider is one write.
   function update(next: SettingsT) {
     setDraft(next);
     setSaved(false);
+    pending.current = true;
     clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
       try {
-        setSettings(await api.updateSettings(next));
+        const saved = await api.updateSettings(next);
+        pending.current = false;
+        setSettings(saved);
         setError(null);
         setSaved(true);
       } catch (e) {
+        pending.current = false;
         setError(toCmdError(e));
       }
     }, 350);
@@ -146,7 +155,12 @@ export function Settings() {
               <p>
                 Night Client {info?.version} · Apache-2.0 · Geist fonts under SIL OFL 1.1
               </p>
-              <p className="mt-2 text-xs text-fg-faint">
+              <div className="mt-3">
+                <Button size="sm" onClick={() => useWelcome.getState().reopen()}>
+                  Show welcome again
+                </Button>
+              </div>
+              <p className="mt-3 text-xs text-fg-faint">
                 Not an official Minecraft product. Not approved by or associated with Mojang Studios or Microsoft. Game files are
                 downloaded from official servers and verified; none are distributed with Night Client.
               </p>

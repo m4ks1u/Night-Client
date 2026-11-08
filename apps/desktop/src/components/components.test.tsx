@@ -139,7 +139,7 @@ describe("app store", () => {
   });
 
   it("uses the instance override or the launcher default for memory", () => {
-    const s = { defaultMaxMemoryMb: 6144, downloadConcurrency: 8, hideOnLaunch: false, reduceMotion: false, gpuAcceleration: false, checkUpdates: true };
+    const s = { defaultMaxMemoryMb: 6144, downloadConcurrency: 8, hideOnLaunch: false, reduceMotion: false, gpuAcceleration: false, checkUpdates: true, onboarded: true };
     expect(effectiveMemory(inst(), s)).toBe(6144);
     expect(effectiveMemory(inst({ maxMemoryMb: 2048 }), s)).toBe(2048);
     expect(effectiveMemory(inst(), null)).toBe(4096);

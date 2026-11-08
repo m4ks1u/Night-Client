@@ -30,7 +30,7 @@ export type SystemInfo = {
   recommendedMemoryMb: number;
   maxMemoryMb: number;
 };
-export type Settings = { defaultMaxMemoryMb: number; downloadConcurrency: number; hideOnLaunch: boolean; reduceMotion: boolean; gpuAcceleration: boolean; checkUpdates: boolean };
+export type Settings = { defaultMaxMemoryMb: number; downloadConcurrency: number; hideOnLaunch: boolean; reduceMotion: boolean; gpuAcceleration: boolean; checkUpdates: boolean; onboarded: boolean };
 export type VersionItem = { id: string; kind: "release" | "snapshot" | string; releaseTime: string; installed: boolean };
 export type VersionList = { latestRelease: string; latestSnapshot: string; versions: VersionItem[]; fromCache: boolean };
 export type AccountStatus = "ready" | "signedIn" | "expired";

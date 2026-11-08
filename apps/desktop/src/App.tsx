@@ -20,6 +20,7 @@ import { Downloads } from "./screens/Downloads";
 import { Discover } from "./screens/Discover";
 import { Settings } from "./screens/Settings";
 import { Diagnostics } from "./screens/Diagnostics";
+import { Welcome } from "./components/Welcome";
 
 function Screen({ route }: { route: Route }) {
   switch (route.name) {
@@ -223,6 +224,7 @@ export default function App() {
         </div>
         <Toaster />
         <CommandPalette open={palette} onClose={() => setPalette(false)} />
+        <Welcome />
       </LazyMotion>
     </MotionConfig>
   );
