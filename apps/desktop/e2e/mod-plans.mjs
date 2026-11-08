@@ -7,6 +7,7 @@
 //    offered as options, not installed by default, and a chosen one is
 //    installed with its own requirements, each project once.
 // 2. Quilt 1.21.1: a Fabric-only mod (Sodium) is offered and plans cleanly.
+// 3. Forge 1.20.1: a Forge mod (JEI) plans; Forge for 1.16.5 is not offered.
 // Nothing is launched; only mod jars (a few MB) are downloaded.
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -24,12 +25,12 @@ const ok = (res, what) => {
   return res.v;
 };
 
-async function instance(d, loader) {
-  const versions = ok(await d.inv("loader_versions", { loader, minecraft: "1.21.1" }), `${loader} versions`);
+async function instance(d, loader, mc = "1.21.1") {
+  const versions = ok(await d.inv("loader_versions", { loader, minecraft: mc }), `${loader} versions`);
   const lv = (versions.find((v) => v.stable) ?? versions[0])?.version;
-  r.check(`${loader} has loader versions for 1.21.1`, !!lv, JSON.stringify(versions.slice(0, 3)));
+  r.check(`${loader} has loader versions for ${mc}`, !!lv, JSON.stringify(versions.slice(0, 3)));
   return ok(
-    await d.inv("create_instance", { input: { name: `Plans ${loader}`, gameVersion: "1.21.1", loader, loaderVersion: lv, maxMemoryMb: null } }),
+    await d.inv("create_instance", { input: { name: `Plans ${loader}`, gameVersion: mc, loader, loaderVersion: lv, maxMemoryMb: null } }),
     `create ${loader}`,
   );
 }
@@ -84,7 +85,13 @@ try {
   const search = ok(await d.inv("modrinth_search", { instanceId: quilt.id, query: "sodium", category: null, sort: "relevance", offset: 0 }), "search on quilt");
   r.check("Quilt search lists Fabric mods", search.hits.some((h) => h.slug === "sodium"), JSON.stringify(search.hits.slice(0, 5).map((h) => h.slug)));
 
-  for (const i of [fab, quilt]) ok(await d.inv("delete_instance", { id: i.id }), "delete");
+  const forge = await instance(d, "forge", "1.20.1");
+  const fp = ok(await d.inv("mod_install_plan", { instanceId: forge.id, projectId: "jei" }), "plan jei on forge");
+  r.check("Forge 1.20.1 instance plans a Forge mod (JEI)", fp.install[0]?.version.project_id === "u6dRKJwZ" && fp.install[0].version.loaders?.includes("forge"), JSON.stringify(fp.install[0]?.version.loaders));
+  const old = ok(await d.inv("loader_versions", { loader: "forge", minecraft: "1.16.5" }), "forge 1.16.5");
+  r.check("Forge before 1.17 is not offered", old.length === 0);
+
+  for (const i of [fab, quilt, forge]) ok(await d.inv("delete_instance", { id: i.id }), "delete");
   const errs = await d.errors();
   r.check("no uncaught UI errors", errs.length === 0, JSON.stringify(errs));
   d.close();

@@ -10,6 +10,7 @@ pub enum Loader {
     Fabric,
     Quilt,
     Neoforge,
+    Forge,
 }
 
 impl Loader {
@@ -19,6 +20,7 @@ impl Loader {
             Self::Fabric => "fabric",
             Self::Quilt => "quilt",
             Self::Neoforge => "neoforge",
+            Self::Forge => "forge",
         }
     }
 
@@ -28,6 +30,7 @@ impl Loader {
             "fabric" => Some(Self::Fabric),
             "quilt" => Some(Self::Quilt),
             "neoforge" => Some(Self::Neoforge),
+            "forge" => Some(Self::Forge),
             _ => None,
         }
     }

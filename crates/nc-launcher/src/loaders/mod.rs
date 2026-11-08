@@ -1,4 +1,4 @@
-//! Mod loaders on top of vanilla: Fabric and Quilt (profile merge) and NeoForge
+//! Mod loaders on top of vanilla: Fabric and Quilt (profile merge), NeoForge and Forge
 //! (installer processors). Every loader install first installs (or
 //! verifies) its vanilla parent, then writes `versions/<launch id>/` with:
 //!
@@ -53,7 +53,20 @@ pub async fn install(
         LoaderKind::Quilt => {
             fabric::install(fabric::Flavor::Quilt, meta, key, env, cancel, on_progress).await
         }
-        LoaderKind::NeoForge => neoforge::install(meta, key, env, cancel, on_progress).await,
+        LoaderKind::NeoForge => {
+            neoforge::install(
+                neoforge::Dist::NeoForge,
+                meta,
+                key,
+                env,
+                cancel,
+                on_progress,
+            )
+            .await
+        }
+        LoaderKind::Forge => {
+            neoforge::install(neoforge::Dist::Forge, meta, key, env, cancel, on_progress).await
+        }
     }
 }
 
@@ -70,7 +83,12 @@ pub async fn versions(
             fabric::versions(fabric::Flavor::Fabric, meta, minecraft, cancel).await
         }
         LoaderKind::Quilt => fabric::versions(fabric::Flavor::Quilt, meta, minecraft, cancel).await,
-        LoaderKind::NeoForge => neoforge::versions(meta, minecraft, cancel).await,
+        LoaderKind::NeoForge => {
+            neoforge::versions(neoforge::Dist::NeoForge, meta, minecraft, cancel).await
+        }
+        LoaderKind::Forge => {
+            neoforge::versions(neoforge::Dist::Forge, meta, minecraft, cancel).await
+        }
     }
 }
 

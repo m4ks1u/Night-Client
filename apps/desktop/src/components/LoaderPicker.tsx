@@ -3,9 +3,9 @@ import { api, toCmdError, type CmdError, type LoaderKind, type LoaderVersion } f
 import { LOADER_NAME } from "../lib/keys";
 import { InlineError, Skeleton, inputClass } from "./ui";
 
-/** Segmented control for Vanilla / Fabric / Quilt / NeoForge (radio group semantics). */
+/** Segmented control for Vanilla / Fabric / Quilt / NeoForge / Forge (radio group semantics). */
 export function LoaderSegments({ value, onChange }: { value: LoaderKind; onChange: (v: LoaderKind) => void }) {
-  const kinds: LoaderKind[] = ["vanilla", "fabric", "quilt", "neoforge"];
+  const kinds: LoaderKind[] = ["vanilla", "fabric", "quilt", "neoforge", "forge"];
   return (
     <div role="radiogroup" aria-label="Mod loader" className="inline-flex self-start rounded-md border border-line bg-surface-2 p-0.5">
       {kinds.map((k) => (
@@ -72,7 +72,7 @@ export function LoaderVersionSelect({ loader, minecraft, value, onChange, id }: 
   if (list.length === 0) {
     return (
       <p className="rounded-md border border-line bg-surface-2 px-3 py-2 text-xs text-fg-muted">
-        {LOADER_NAME[loader]} isn't available for Minecraft {minecraft}. Choose another version or loader.
+        {LOADER_NAME[loader]} isn't available for Minecraft {minecraft}{loader === "forge" ? " in Night Client (Forge is supported from 1.17)" : ""}. Choose another version or loader.
       </p>
     );
   }

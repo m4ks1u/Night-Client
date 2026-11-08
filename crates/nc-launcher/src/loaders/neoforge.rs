@@ -1,4 +1,5 @@
-//! NeoForge: runs the installer's processors natively (no installer GUI).
+//! NeoForge and Forge (1.17+): runs the installer's processors natively (no
+//! installer GUI). Both ship the same `install_profile.json` spec 1 format.
 //!
 //! 1. Install vanilla, then download the official installer jar, verified
 //!    against the Maven `.sha1` sidecar.
@@ -22,7 +23,7 @@ use std::{
 use nc_core::{
     installprofile::{InstallProfile, ResolveContext, maven_path, resolve_arg},
     libraries,
-    loader::{InstallKey, neoforge_versions_for},
+    loader::{InstallKey, forge_versions_for, neoforge_versions_for},
     manifest::VersionJson,
     rules::Environment,
 };
@@ -40,16 +41,58 @@ use crate::{
 
 const PROCESSOR_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// NeoForge and (modern) Forge ship the same installer format; they differ
+/// only in where the installer lives and how versions are named.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dist {
+    NeoForge,
+    /// Forge for Minecraft 1.17 and newer (`install_profile` spec 1).
+    Forge,
+}
+
+impl Dist {
+    fn name(self) -> &'static str {
+        match self {
+            Self::NeoForge => "NeoForge",
+            Self::Forge => "Forge",
+        }
+    }
+
+    fn slug(self) -> &'static str {
+        match self {
+            Self::NeoForge => "neoforge",
+            Self::Forge => "forge",
+        }
+    }
+
+    /// `<maven>/<group path>/<artifact>`
+    fn artifact_url(self, meta: &Meta) -> String {
+        match self {
+            Self::NeoForge => format!("{}/net/neoforged/neoforge", meta.neoforge_maven_url),
+            Self::Forge => format!("{}/net/minecraftforge/forge", meta.forge_maven_url),
+        }
+    }
+
+    /// The Maven version of the installer for a key's loader version.
+    fn maven_version(self, minecraft: &str, loader_version: &str) -> String {
+        match self {
+            Self::NeoForge => loader_version.to_owned(),
+            Self::Forge => format!("{minecraft}-{loader_version}"),
+        }
+    }
+}
+
 pub async fn versions(
+    dist: Dist,
     meta: &Meta,
     minecraft: &str,
     cancel: &CancellationToken,
 ) -> Result<Vec<LoaderVersion>, LauncherError> {
-    let url = format!(
-        "{}/net/neoforged/neoforge/maven-metadata.xml",
-        meta.neoforge_maven_url
-    );
-    let cache = meta.layout.cache_dir().join("neoforge-maven-metadata.xml");
+    let url = format!("{}/maven-metadata.xml", dist.artifact_url(meta));
+    let cache = meta
+        .layout
+        .cache_dir()
+        .join(format!("{}-maven-metadata.xml", dist.slug()));
     let xml = match meta.dl.get_bytes(&url, cancel).await {
         Ok(b) => {
             let c = cache.clone();
@@ -68,10 +111,19 @@ pub async fn versions(
         .skip(1)
         .filter_map(|s| s.split_once("</version>").map(|(v, _)| v.trim()))
         .collect();
-    Ok(neoforge_versions_for(minecraft, all)
-        .into_iter()
-        .map(|(version, stable)| LoaderVersion { version, stable })
-        .collect())
+    Ok(match dist {
+        Dist::NeoForge => neoforge_versions_for(minecraft, all)
+            .into_iter()
+            .map(|(version, stable)| LoaderVersion { version, stable })
+            .collect(),
+        Dist::Forge => forge_versions_for(minecraft, all)
+            .into_iter()
+            .map(|version| LoaderVersion {
+                version,
+                stable: true,
+            })
+            .collect(),
+    })
 }
 
 fn read_zip_entry(jar: &Path, name: &str) -> Result<Vec<u8>, LauncherError> {
@@ -147,6 +199,7 @@ fn extract_entries(
 }
 
 pub async fn install(
+    dist: Dist,
     meta: &Meta,
     key: &InstallKey,
     env: &Environment,
@@ -178,20 +231,22 @@ pub async fn install(
     let was_installed = super::begin(layout, &id).await?;
 
     // 1. Installer jar, verified against its Maven sidecar.
+    let mv = dist.maven_version(&key.minecraft, nf);
     let base = format!(
-        "{}/net/neoforged/neoforge/{nf}/neoforge-{nf}-installer.jar",
-        meta.neoforge_maven_url
+        "{}/{mv}/{}-{mv}-installer.jar",
+        dist.artifact_url(meta),
+        dist.slug()
     );
     let sha = String::from_utf8_lossy(&meta.dl.get_bytes(&format!("{base}.sha1"), cancel).await?)
         .trim()
         .to_ascii_lowercase();
     if sha.len() != 40 || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(LauncherError::Parse {
-            what: "NeoForge installer .sha1".into(),
+            what: format!("{} installer .sha1", dist.name()),
             message: "not a SHA-1".into(),
         });
     }
-    let work = layout.cache_dir().join("neoforge").join(nf);
+    let work = layout.cache_dir().join(dist.slug()).join(&mv);
     let installer = work.join("installer.jar");
     meta.dl
         .fetch_all(
@@ -230,11 +285,12 @@ pub async fn install(
             message: format!("is for Minecraft {}", profile.minecraft),
         });
     }
-    let child: VersionJson = serde_json::from_slice(&version_bytes)
-        .map_err(LauncherError::parse("NeoForge version.json"))?;
+    let child: VersionJson = serde_json::from_slice(&version_bytes).map_err(
+        LauncherError::parse(format!("{} version.json", dist.name())),
+    )?;
     if child.id != id || child.inherits_from.as_deref() != Some(key.minecraft.as_str()) {
         return Err(LauncherError::Parse {
-            what: "NeoForge version.json".into(),
+            what: format!("{} version.json", dist.name()),
             message: format!("unexpected id {}", child.id),
         });
     }
@@ -419,7 +475,7 @@ pub async fn install(
     if was_installed {
         repaired.extend(super::relative(layout.root(), &files.fetched));
     }
-    tracing::info!(%id, processors = total, "NeoForge installed");
+    tracing::info!(%id, loader = dist.name(), processors = total, "loader installed");
     Ok(Installed {
         version: merged,
         libraries: libs,

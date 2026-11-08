@@ -28,6 +28,7 @@ const TINT: Record<LoaderKind, string> = {
   fabric: "var(--color-warning)",
   quilt: "var(--color-success)",
   neoforge: "var(--color-accent)",
+  forge: "var(--color-danger)",
 };
 
 /**
