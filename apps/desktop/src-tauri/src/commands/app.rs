@@ -15,6 +15,7 @@ pub struct AppInfo {
     log_dir: String,
     sign_in_configured: bool,
     startup_error: Option<String>,
+    gpu_active: bool,
 }
 
 #[tauri::command]
@@ -25,6 +26,7 @@ pub fn app_info(state: State<'_, AppState>) -> AppInfo {
         log_dir: state.log_dir.display().to_string(),
         sign_in_configured: state.auth.is_some(),
         startup_error: state.startup_error.clone(),
+        gpu_active: state.gpu_active,
     }
 }
 

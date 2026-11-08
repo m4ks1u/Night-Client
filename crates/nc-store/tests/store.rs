@@ -290,6 +290,7 @@ fn settings_roundtrip_defaults_and_corruption() {
         download_concurrency: 4,
         hide_on_launch: true,
         reduce_motion: true,
+        gpu_acceleration: true,
     };
     s.save_app_settings(&custom).unwrap();
     assert_eq!(s.app_settings(), custom);

@@ -24,6 +24,8 @@ pub struct AppState {
     /// Set while the game data is being moved; installs, launches and
     /// instance or mod changes are refused meanwhile.
     pub relocating: AtomicBool,
+    /// Whether this run's WebView draws with the GPU (the setting is read once, at startup).
+    pub gpu_active: bool,
     pub log_dir: PathBuf,
     /// `None` when the database could not be opened (e.g. created by a newer
     /// version); the UI then shows `startup_error` instead of crashing.
@@ -69,6 +71,7 @@ impl AppState {
             layout,
             home,
             relocating: AtomicBool::new(false),
+            gpu_active: settings.gpu_acceleration,
             log_dir,
             store,
             startup_error,

@@ -16,6 +16,10 @@ pub struct AppSettings {
     pub hide_on_launch: bool,
     /// Turn animations off even when Windows animations are on.
     pub reduce_motion: bool,
+    /// Let WebView2 draw with the GPU. Off by default: the launcher's UI
+    /// renders just as smoothly in software and the GPU process costs about
+    /// 70 MB. Applied at startup.
+    pub gpu_acceleration: bool,
 }
 
 impl Default for AppSettings {
@@ -25,6 +29,7 @@ impl Default for AppSettings {
             download_concurrency: 8,
             hide_on_launch: false,
             reduce_motion: false,
+            gpu_acceleration: false,
         }
     }
 }

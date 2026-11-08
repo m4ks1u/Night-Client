@@ -147,6 +147,7 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
         && let Some(w) = app.get_webview_window("main")
     {
         let _ = w.hide();
+        crate::memory::set_low(&w, true);
     }
 
     let exit_app = app.clone();
@@ -167,6 +168,7 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
             }
         }
         if let Some(w) = exit_app.get_webview_window("main") {
+            crate::memory::set_low(&w, false);
             let _ = w.show();
         }
         tracing::info!(instance = %id, ?code, seconds, "game exited");
