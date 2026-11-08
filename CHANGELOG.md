@@ -6,6 +6,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 5 (Modrinth)
+- Discover screen: search scoped to an instance's loader and game version, categories, sorting, pagination, icons.
+- Install plans with required-dependency resolution and warnings for missing dependencies and declared conflicts, confirmed before install.
+- SHA-1, size and SHA-512 verification of mod downloads from `cdn.modrinth.com`.
+- Mods tab: enable/disable, remove with a dependency warning, update checks and Update all, folder sync with identification by hash.
+- Local `.jar` import through a native picker, with loader checks and an "unverified" label.
+- Modrinth client with an identifying User-Agent, rate-limit handling and a response cache; `instance_mods` table (migration v5).
+
 ### Added: Stage 4 (mod loaders, instance folders)
 - Fabric instances: Fabric Meta profiles, Maven `.sha1` verification for loader and intermediary jars, loader-version picker.
 - NeoForge instances: native installer-processor execution (spec 1), verified installer and libraries, Mojang mappings supplied by the launcher; NeoForge 21.x and 26.x verified.

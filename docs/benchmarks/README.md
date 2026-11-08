@@ -133,3 +133,15 @@ cargo test --release -p nc-launcher --test loaders -- --ignored --nocapture
 ```
 
 Results are in `docs/stage-4-report.md`.
+
+---
+
+## Stage 5 re-run (2026-11-08, same PC, release build)
+
+| Batch | UI ready | Private MB | Idle CPU |
+|---|---|---|---|
+| A (runs 2–5 shown) | 292–314 ms | 174.9–182.7 | 0–0.02 % |
+| B (5 runs) | 298, 326, 317, 309, 321 ms | 176.0, 206.6, 205.8, 184.8, 183.3 | 0–0.1 % |
+
+Startup is unchanged; the Modrinth client is created lazily and makes no requests at startup. Memory
+shows the same occasional ~205 MB runs seen since Stage 3.

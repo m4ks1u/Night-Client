@@ -118,6 +118,19 @@ appended, and child libraries override parent libraries with the same `group:art
 - **Forge and Quilt:** not implemented. Forge uses the same install-profile format as NeoForge, and
   Quilt the same profile shape as Fabric.
 
+## Modrinth
+
+`nc_launcher::modrinth`:
+- `api`: the client. It sends the `User-Agent`, honours rate-limit headers (pauses, one 429 retry),
+  caches responses (TTL, at most 256 entries), and validates ids, CDN-only file URLs and file names.
+- `plan`: resolves required dependencies through the `VersionSource` trait, so tests use a fake catalogue.
+- `mods`: the mods folder. It scans with SHA-1/SHA-512, installs with both hashes verified, toggles
+  `.jar.disabled`, removes files, and inspects and imports local jars.
+
+The folder is the source of truth. `instance_mods` (migration v5) caches metadata and is re-synced on
+every listing. The app layer (`commands/mods.rs`) re-validates compatibility before every install and
+blocks changes while the game runs.
+
 ## Instance game folders
 
 By default an instance's game folder is `<data>/instances/<dir_name>`. A custom folder

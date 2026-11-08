@@ -70,6 +70,12 @@ cargo test --release -p nc-launcher --test matrix -- --ignored --nocapture
 
 `NC_MATRIX_VERSIONS=1.8.9,26.3` limits the set, and `NC_MATRIX_DATA=<dir>` uses another data folder.
 
+Real Modrinth API (search, dependency plan, verified install, hash identification, update check):
+
+```bash
+cargo test -p nc-launcher --test modrinth -- --ignored --nocapture
+```
+
 Loader matrix (Fabric and NeoForge for 1.21.1 and 26.3; runs NeoForge's installer processors):
 
 ```bash
