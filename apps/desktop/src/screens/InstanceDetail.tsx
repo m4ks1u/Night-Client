@@ -9,10 +9,11 @@ import { formatDuration, formatMemory, formatRelative } from "../lib/format";
 import { effectiveMemory, useApp, useVersionJob } from "../stores/app";
 import { InstanceJava } from "../components/JavaPicker";
 import { JvmArgsCard } from "../components/JvmArgs";
+import { ModsTab } from "../components/ModsTab";
 import { GameFolder, LoaderCard } from "../components/InstanceSettings";
 import { navigate, useRouter } from "../stores/router";
 
-export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: "overview" | "log" }) {
+export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: "overview" | "mods" | "log" }) {
   const instances = useApp((s) => s.instances);
   const refresh = useApp((s) => s.refreshInstances);
   const back = useRouter((s) => s.back);
@@ -49,7 +50,7 @@ export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: "ov
       </header>
 
       <div role="tablist" aria-label="Instance sections" className="mb-5 flex gap-1 border-b border-line">
-        {(["overview", "log"] as const).map((t) => (
+        {(instance.loader === "vanilla" ? (["overview", "log"] as const) : (["overview", "mods", "log"] as const)).map((t) => (
           <button
             key={t}
             role="tab"
@@ -58,12 +59,18 @@ export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: "ov
             onClick={() => navigate({ name: "instance", id, tab: t })}
             className={`-mb-px border-b-2 px-3 pb-2.5 text-[13px] font-medium transition-colors ${tab === t ? "border-accent text-fg" : "border-transparent text-fg-muted hover:text-fg"}`}
           >
-            {t === "overview" ? "Overview" : "Game log"}
+            {t === "overview" ? "Overview" : t === "mods" ? "Mods" : "Game log"}
           </button>
         ))}
       </div>
 
-      {tab === "overview" ? <Overview instance={instance} /> : <GameLog instance={instance} />}
+      {tab === "overview" ? (
+        <Overview instance={instance} />
+      ) : tab === "mods" && instance.loader !== "vanilla" ? (
+        <ModsTab instance={instance} />
+      ) : (
+        <GameLog instance={instance} />
+      )}
     </div>
   );
 }

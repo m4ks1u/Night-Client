@@ -13,6 +13,7 @@ import { NewInstance } from "./screens/NewInstance";
 import { InstanceDetail } from "./screens/InstanceDetail";
 import { Accounts } from "./screens/Accounts";
 import { Downloads } from "./screens/Downloads";
+import { Discover } from "./screens/Discover";
 import { Settings } from "./screens/Settings";
 import { Diagnostics } from "./screens/Diagnostics";
 
@@ -26,6 +27,8 @@ function Screen({ route }: { route: Route }) {
       return <NewInstance />;
     case "instance":
       return <InstanceDetail id={route.id} tab={route.tab} />;
+    case "discover":
+      return <Discover instanceId={route.instanceId} />;
     case "downloads":
       return <Downloads />;
     case "accounts":

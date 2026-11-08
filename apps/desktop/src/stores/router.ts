@@ -4,7 +4,8 @@ export type Route =
   | { name: "home" }
   | { name: "instances" }
   | { name: "new-instance" }
-  | { name: "instance"; id: string; tab?: "overview" | "log" }
+  | { name: "instance"; id: string; tab?: "overview" | "mods" | "log" }
+  | { name: "discover"; instanceId?: string }
   | { name: "downloads" }
   | { name: "accounts" }
   | { name: "settings" }
