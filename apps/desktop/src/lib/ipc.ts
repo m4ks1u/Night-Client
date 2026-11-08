@@ -57,6 +57,51 @@ export type Instance = {
 };
 export type LoaderKind = "vanilla" | "fabric" | "neoforge";
 export type LoaderVersion = { version: string; stable: boolean };
+export type SortIndex = "relevance" | "downloads" | "follows" | "newest" | "updated";
+export type SearchHit = {
+  project_id: string;
+  slug: string | null;
+  title: string;
+  description: string;
+  icon_url: string | null;
+  downloads: number;
+  follows: number;
+  author: string;
+  display_categories: string[];
+  installed: boolean;
+};
+export type SearchView = { hits: SearchHit[]; total: number; offset: number };
+export type Category = { name: string; project_type: string; header: string };
+export type MrVersion = {
+  id: string;
+  project_id: string;
+  name: string;
+  version_number: string;
+  version_type: string;
+  files: { filename: string; size: number; primary: boolean }[];
+};
+export type InstallPlan = {
+  install: { version: MrVersion; requiredBy: string | null }[];
+  alreadyInstalled: string[];
+  missing: string[];
+  conflicts: string[];
+  titles: Record<string, string>;
+};
+export type ModRecord = {
+  instanceId: string;
+  fileName: string;
+  source: "modrinth" | "local";
+  projectId: string | null;
+  versionId: string | null;
+  title: string;
+  versionNumber: string | null;
+  iconUrl: string | null;
+  size: number;
+  enabled: boolean;
+  requiredBy: string | null;
+  installedAt: number;
+};
+export type ModUpdate = { fileName: string; current: string | null; versionId: string; versionNumber: string };
 export type Running = { instanceId: string; startedAt: number };
 
 export type Diagnostics = {
@@ -171,6 +216,20 @@ export const api = {
   checkActiveAccount: () => invoke<Account | null>("check_active_account"),
   switchAccount: (uuid: string) => invoke<Account>("switch_account", { uuid }),
   removeAccount: (uuid: string) => invoke<Account | null>("remove_account", { uuid }),
+
+  modrinthSearch: (instanceId: string, query: string, category: string | null, sort: SortIndex, offset: number) =>
+    invoke<SearchView>("modrinth_search", { instanceId, query, category, sort, offset }),
+  openModrinthPage: (slug: string) => invoke<void>("open_modrinth_page", { slug }),
+  modrinthCategories: () => invoke<Category[]>("modrinth_categories"),
+  modInstallPlan: (instanceId: string, projectId: string) => invoke<InstallPlan>("mod_install_plan", { instanceId, projectId }),
+  modInstall: (instanceId: string, items: { versionId: string; requiredBy: string | null }[]) =>
+    invoke<ModRecord[]>("mod_install", { instanceId, items }),
+  listMods: (instanceId: string) => invoke<ModRecord[]>("list_mods", { instanceId }),
+  setModEnabled: (instanceId: string, fileName: string, enabled: boolean) => invoke<void>("set_mod_enabled", { instanceId, fileName, enabled }),
+  removeMod: (instanceId: string, fileName: string) => invoke<void>("remove_mod", { instanceId, fileName }),
+  checkModUpdates: (instanceId: string) => invoke<ModUpdate[]>("check_mod_updates", { instanceId }),
+  updateMods: (instanceId: string, fileNames: string[]) => invoke<number>("update_mods", { instanceId, fileNames }),
+  importLocalMod: (instanceId: string) => invoke<{ record: ModRecord; warnings: string[] } | null>("import_local_mod", { instanceId }),
 
   runningInstances: () => invoke<Running[]>("running_instances"),
   launchInstance: (id: string) => invoke<void>("launch_instance", { id }),

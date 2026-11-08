@@ -78,19 +78,21 @@ export function Settings() {
 
           <Card title="Downloads">
             <Field label="Parallel downloads" htmlFor={ids.conc} hint="Lower this on slow or shared connections. Applies to the next download.">
-              <select
-                id={ids.conc}
-                className={`${inputClass} w-32`}
-                value={draft.downloadConcurrency}
-                onChange={(e) => update({ ...draft, downloadConcurrency: Number(e.target.value) })}
-              >
-                {[1, 2, 4, 6, 8, 12, 16].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                    {n === 8 ? " (default)" : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="w-36">
+                <select
+                  id={ids.conc}
+                  className={inputClass}
+                  value={draft.downloadConcurrency}
+                  onChange={(e) => update({ ...draft, downloadConcurrency: Number(e.target.value) })}
+                >
+                  {[1, 2, 4, 6, 8, 12, 16].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                      {n === 8 ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </Field>
           </Card>
 

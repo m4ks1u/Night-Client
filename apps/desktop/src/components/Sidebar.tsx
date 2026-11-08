@@ -1,4 +1,4 @@
-import { Activity, Boxes, Download, House, Settings, UserRound } from "lucide-react";
+import { Activity, Boxes, Compass, Download, House, Settings, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { navigate, sectionOf, useRouter, type Route } from "../stores/router";
 import { useApp } from "../stores/app";
@@ -8,6 +8,7 @@ type Item = { route: Route; label: string; icon: ReactNode };
 const main: Item[] = [
   { route: { name: "home" }, label: "Home", icon: <House size={17} strokeWidth={1.75} /> },
   { route: { name: "instances" }, label: "Instances", icon: <Boxes size={17} strokeWidth={1.75} /> },
+  { route: { name: "discover" }, label: "Discover", icon: <Compass size={17} strokeWidth={1.75} /> },
   { route: { name: "downloads" }, label: "Downloads", icon: <Download size={17} strokeWidth={1.75} /> },
 ];
 

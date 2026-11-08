@@ -52,6 +52,13 @@ export function formatRelative(unixSeconds: number | null, now = Date.now() / 10
   return new Date(unixSeconds * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+/** Compact counts: 950, 12.4K, 3.1M. */
+export function formatCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}K`;
+  return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0)}M`;
+}
+
 /** Default instance name for a version, e.g. "Minecraft 1.21.1". */
 export function defaultInstanceName(version: string): string {
   return `Minecraft ${version}`;
