@@ -1,0 +1,58 @@
+[workspace]
+resolver = "3"
+members = ["crates/nc-core", "crates/nc-launcher", "crates/nc-store", "apps/desktop/src-tauri"]
+
+[workspace.package]
+version = "0.1.0-beta.1"
+edition = "2024"
+rust-version = "1.99"
+license = "Apache-2.0"
+publish = false
+repository = "https://github.com/m4ks1u/Night-Client"
+homepage = "https://github.com/m4ks1u/Night-Client"
+
+[workspace.dependencies]
+nc-core = { path = "crates/nc-core" }
+nc-launcher = { path = "crates/nc-launcher" }
+nc-store = { path = "crates/nc-store" }
+
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+regex = { version = "1.13.1", default-features = false, features = ["std", "unicode-perl", "perf"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "fs", "io-util", "process", "sync", "time", "net"] }
+tokio-util = "0.7.20"
+futures = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "stream", "http2", "form"] }
+sha1 = "0.11.0"
+hex = "0.4.3"
+zip = { version = "9.4.2", default-features = false, features = ["deflate"] }
+url = "2.5.8"
+base64 = "0.23.1"
+getrandom = "0.4.3"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+wiremock = "0.6.5"
+tempfile = "3.27.0"
+rusqlite = { version = "0.41.1", features = ["bundled"] }
+uuid = { version = "1.29.1", features = ["v4"] }
+tracing-appender = "0.2.5"
+zeroize = { version = "1.9.1", default-features = false, features = ["alloc"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = true
+opt-level = 3
+
+[profile.dev.package."*"]
+opt-level = 2
