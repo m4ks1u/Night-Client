@@ -73,6 +73,13 @@ pub async fn set_instance_java(
             if p.len() > 1024 {
                 return Err(super::invalid("path is too long"));
             }
+            // Inspecting a runtime executes `java -version`, so never run a
+            // binary from a network share or a raw device path.
+            if p.starts_with(r"\\") || p.starts_with("//") {
+                return Err(super::invalid(
+                    "Java must be on a local drive, not a network or device path",
+                ));
+            }
             let input = PathBuf::from(&p);
             if !input.is_absolute() {
                 return Err(super::invalid(
