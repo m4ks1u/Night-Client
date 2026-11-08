@@ -238,7 +238,6 @@ pub async fn mod_install(
     let (inst, loader, dir) = ctx(&state, &instance_id).await?;
     ensure_not_running(&state, &inst.id)?;
     let c = CancellationToken::new();
-    let dl = state.meta().dl;
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(LauncherError::io(&dir))?;
@@ -259,33 +258,46 @@ pub async fn mod_install(
                 format!("{} is not for {loader} {}.", v.name, inst.game_version),
             ));
         }
-        let file = mods::install_version(&dl, &dir, &v, &c).await?;
-        let proj = state.modrinth.project(&v.project_id, &c).await.ok();
-        let rec = ModRecord {
-            instance_id: inst.id.clone(),
-            file_name: file.file_name.clone(),
-            source: ModSource::Modrinth,
-            project_id: Some(v.project_id.clone()),
-            version_id: Some(v.id.clone()),
-            title: proj
-                .as_ref()
-                .map(|p| p.title.clone())
-                .unwrap_or_else(|| v.name.clone()),
-            version_number: Some(v.version_number.clone()),
-            icon_url: proj.and_then(|p| p.icon_url),
-            sha1: file.sha1.clone(),
-            sha512: file.sha512.clone(),
-            size: file.size as i64,
-            enabled: true,
-            required_by: item.required_by.clone(),
-            installed_at: 0,
-        };
-        let r = rec.clone();
-        with_db(&state, move |db| db.upsert_mod(&r)).await?;
-        tracing::info!(instance = %inst.id, file = %file.file_name, "mod installed");
-        done.push(rec);
+        done.push(install_and_record(&state, &inst.id, &dir, &v, item.required_by, &c).await?);
     }
     Ok(done)
+}
+
+/// Download and verify one Modrinth version into the mods folder and store
+/// its row (title and icon from the project, when reachable).
+async fn install_and_record(
+    state: &AppState,
+    instance_id: &str,
+    dir: &std::path::Path,
+    v: &Version,
+    required_by: Option<String>,
+    c: &CancellationToken,
+) -> Result<ModRecord> {
+    let file = mods::install_version(&state.meta().dl, dir, v, c).await?;
+    let proj = state.modrinth.project(&v.project_id, c).await.ok();
+    let rec = ModRecord {
+        instance_id: instance_id.to_owned(),
+        file_name: file.file_name.clone(),
+        source: ModSource::Modrinth,
+        project_id: Some(v.project_id.clone()),
+        version_id: Some(v.id.clone()),
+        title: proj
+            .as_ref()
+            .map(|p| p.title.clone())
+            .unwrap_or_else(|| v.name.clone()),
+        version_number: Some(v.version_number.clone()),
+        icon_url: proj.and_then(|p| p.icon_url),
+        sha1: file.sha1.clone(),
+        sha512: file.sha512.clone(),
+        size: file.size as i64,
+        enabled: true,
+        required_by,
+        installed_at: 0,
+    };
+    let r = rec.clone();
+    with_db(state, move |db| db.upsert_mod(&r)).await?;
+    tracing::info!(instance = %instance_id, file = %file.file_name, "mod installed");
+    Ok(rec)
 }
 
 fn stem(file_name: &str) -> String {
@@ -487,15 +499,26 @@ pub async fn check_mod_updates(
         .collect())
 }
 
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSummary {
+    updated: u32,
+    /// Titles of dependencies that newer versions now require and that were installed.
+    added_dependencies: Vec<String>,
+    /// Titles (or ids) of newly required dependencies with no compatible version.
+    missing_dependencies: Vec<String>,
+}
+
 /// Update the named mods to their latest compatible versions. The new file
 /// is downloaded and verified before the old one is removed; disabled mods
-/// stay disabled.
+/// stay disabled. Dependencies a newer version starts to require are
+/// resolved like an install plan and installed too.
 #[tauri::command]
 pub async fn update_mods(
     state: State<'_, AppState>,
     instance_id: String,
     file_names: Vec<String>,
-) -> Result<u32> {
+) -> Result<UpdateSummary> {
     for f in &file_names {
         validate_file_name(f)?;
     }
@@ -504,8 +527,26 @@ pub async fn update_mods(
     let only: HashSet<String> = file_names.into_iter().collect();
     let dl = state.meta().dl;
     let c = CancellationToken::new();
+    let id = inst.id.clone();
+    let mut installed: HashSet<String> = with_db(&state, move |db| db.list_mods(&id))
+        .await?
+        .into_iter()
+        .filter_map(|m| m.project_id)
+        .collect();
+    let mut summary = UpdateSummary::default();
     let mut n = 0;
     for (old, v) in updates_for(&state, &inst, loader, Some(&only)).await? {
+        // Resolve first, so a network failure leaves the old version in place.
+        let deps = plan::plan(
+            &state.modrinth,
+            v.clone(),
+            loader,
+            &inst.game_version,
+            &installed,
+            &c,
+        )
+        .await
+        .map_err(LauncherError::from)?;
         let new = mods::install_version(&dl, &dir, &v, &c).await?;
         if new.file_name != old.file_name {
             mods::remove(&dir, &old.file_name)?;
@@ -527,9 +568,32 @@ pub async fn update_mods(
         };
         with_db(&state, move |db| db.upsert_mod(&rec)).await?;
         n += 1;
+
+        for dep in deps.install.into_iter().filter(|p| p.required_by.is_some()) {
+            let rec = install_and_record(&state, &inst.id, &dir, &dep.version, dep.required_by, &c)
+                .await?;
+            installed.insert(dep.version.project_id);
+            summary.added_dependencies.push(rec.title);
+        }
+        for pid in deps.missing {
+            let title = match state.modrinth.project(&pid, &c).await {
+                Ok(p) => p.title,
+                Err(_) => pid,
+            };
+            if !summary.missing_dependencies.contains(&title) {
+                summary.missing_dependencies.push(title);
+            }
+        }
     }
-    tracing::info!(instance = %inst.id, updated = n, "mods updated");
-    Ok(n)
+    summary.updated = n;
+    tracing::info!(
+        instance = %inst.id,
+        updated = n,
+        added = summary.added_dependencies.len(),
+        missing = summary.missing_dependencies.len(),
+        "mods updated"
+    );
+    Ok(summary)
 }
 
 #[derive(Serialize)]

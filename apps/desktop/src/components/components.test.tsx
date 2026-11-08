@@ -227,6 +227,17 @@ describe("toasts", () => {
 });
 
 import { CommandPalette } from "./CommandPalette";
+import { updateNotices } from "./ModsTab";
+
+describe("mod update notices", () => {
+  it("reports added and missing dependencies, and nothing otherwise", () => {
+    expect(updateNotices({ updated: 2, addedDependencies: [], missingDependencies: [] })).toEqual([]);
+    const n = updateNotices({ updated: 1, addedDependencies: ["Fabric API"], missingDependencies: ["Cloth Config"] });
+    expect(n).toHaveLength(2);
+    expect(n[0]).toContain("Fabric API");
+    expect(n[1]).toContain("Cloth Config");
+  });
+});
 
 describe("command palette render", () => {
   it("renders while instances are still loading (regression: React #185 update loop)", () => {

@@ -3,10 +3,21 @@ import { ArrowUpCircle, Compass, FilePlus2, Loader2, Package, RefreshCw, ShieldA
 import { Button } from "./Button";
 import { ModIcon } from "./ModParts";
 import { Badge, Dialog, EmptyState, ErrorState, InlineError, Skeleton, Toggle } from "./ui";
-import { api, toCmdError, type CmdError, type Instance, type ModRecord, type ModUpdate } from "../lib/ipc";
+import { api, toCmdError, type CmdError, type Instance, type ModRecord, type ModUpdate, type UpdateSummary } from "../lib/ipc";
 import { formatBytes } from "../lib/format";
 import { useApp } from "../stores/app";
 import { navigate } from "../stores/router";
+
+/** Messages for dependencies that an update added or could not satisfy. */
+export function updateNotices(s: UpdateSummary): string[] {
+  const out: string[] = [];
+  if (s.addedDependencies.length > 0) out.push(`Also installed, because the new versions require them: ${s.addedDependencies.join(", ")}.`);
+  if (s.missingDependencies.length > 0)
+    out.push(
+      `The new versions require ${s.missingDependencies.join(", ")}, which ${s.missingDependencies.length > 1 ? "have" : "has"} no version for this game version and loader. The updated mods may not load.`,
+    );
+  return out;
+}
 
 export function ModsTab({ instance }: { instance: Instance }) {
   const running = useApp((s) => instance.id in s.running);
@@ -83,8 +94,9 @@ export function ModsTab({ instance }: { instance: Instance }) {
             disabled={running || busy !== null}
             onClick={() =>
               void run("update", async () => {
-                await api.updateMods(instance.id, updates.map((u) => u.fileName));
+                const s = await api.updateMods(instance.id, updates.map((u) => u.fileName));
                 setUpdates([]);
+                setNotice(updateNotices(s));
               })
             }
           >

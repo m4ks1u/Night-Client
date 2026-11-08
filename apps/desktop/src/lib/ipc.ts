@@ -102,6 +102,7 @@ export type ModRecord = {
   installedAt: number;
 };
 export type ModUpdate = { fileName: string; current: string | null; versionId: string; versionNumber: string };
+export type UpdateSummary = { updated: number; addedDependencies: string[]; missingDependencies: string[] };
 export type Running = { instanceId: string; startedAt: number };
 
 export type Diagnostics = {
@@ -230,7 +231,7 @@ export const api = {
   setModEnabled: (instanceId: string, fileName: string, enabled: boolean) => invoke<void>("set_mod_enabled", { instanceId, fileName, enabled }),
   removeMod: (instanceId: string, fileName: string) => invoke<void>("remove_mod", { instanceId, fileName }),
   checkModUpdates: (instanceId: string) => invoke<ModUpdate[]>("check_mod_updates", { instanceId }),
-  updateMods: (instanceId: string, fileNames: string[]) => invoke<number>("update_mods", { instanceId, fileNames }),
+  updateMods: (instanceId: string, fileNames: string[]) => invoke<UpdateSummary>("update_mods", { instanceId, fileNames }),
   importLocalMod: (instanceId: string) => invoke<{ record: ModRecord; warnings: string[] } | null>("import_local_mod", { instanceId }),
 
   runningInstances: () => invoke<Running[]>("running_instances"),
