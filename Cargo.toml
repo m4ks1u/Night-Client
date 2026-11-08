@@ -8,6 +8,8 @@ edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
 publish = false
+repository = "https://github.com/m4ks1u/Night-Client"
+homepage = "https://github.com/m4ks1u/Night-Client"
 
 [workspace.dependencies]
 nc-core = { path = "crates/nc-core" }

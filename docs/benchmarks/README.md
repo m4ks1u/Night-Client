@@ -211,3 +211,17 @@ With Hardware acceleration switched on, the release build idles at 176 MB, confi
 
 `night-client.exe` is 22.8 MB (21.3 MB at Stage 7; the updater plugin accounts for the difference) and the NSIS
 installer is 6.2 MB. Silent install takes about 1 s. This build has no update channel, so no update check runs at startup.
+
+## Stage 9 re-run (2026-11-08, same PC, release build)
+
+| Run | UI ready | Private MB | Working set MB | Idle CPU |
+|---|---|---|---|---|
+| 1 | 305 ms | 122.9 | 338.3 | 0.29 % |
+| 2 | 307 ms | 118.4 | 332.2 | 0 % |
+| 3 | 257 ms | 120.0 | 333.6 | 0 % |
+| 4 | 258 ms | 119.9 | 333.7 | 0 % |
+| 5 | 258 ms | 118.2 | 331.4 | 0 % |
+
+`night-client.exe` is 23.9 MB (22.8 MB at Stage 8). Runs 3–5 match Stage 8; the first two were slower
+by about 50 ms, the cold-start pattern seen in earlier stages. The registry scan for Java only runs when
+Java runtimes are listed, not at startup. Memory still meets the < 150 MB target.

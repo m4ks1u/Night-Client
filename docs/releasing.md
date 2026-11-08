@@ -18,8 +18,9 @@ draft release, then publishing the update feed. Nothing is published automatical
    - **Secret** `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: its password.
 3. **Environment** named `release` (Settings → Environments), with yourself as a required reviewer.
    Both release workflows wait for that approval.
-4. **User-Agent contact:** `nc_launcher::user_agent()` names the project's repository URL, which
-   Modrinth requires as a contact. Set it to the real repository before the first release.
+4. **User-Agent contact:** `nc_launcher::user_agent()` names the repository URL
+   (https://github.com/m4ks1u/Night-Client), which Modrinth requires as a contact. Update it if
+   the repository moves.
 
 ## Each release
 

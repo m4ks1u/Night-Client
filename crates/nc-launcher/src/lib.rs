@@ -35,7 +35,7 @@ pub use tokio_util::sync::CancellationToken;
 /// and good practice for Mojang's CDN.
 pub fn user_agent() -> String {
     format!(
-        "NightClient/{} (+https://github.com/night-client/night-client)",
+        "NightClient/{} (+https://github.com/m4ks1u/Night-Client)",
         env!("CARGO_PKG_VERSION")
     )
 }

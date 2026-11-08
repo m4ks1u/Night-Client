@@ -178,3 +178,17 @@ This one installs Night Client for your Windows user into a test folder, then un
    node e2e/update-flow.mjs T
    ```
    Then rebuild normally, so the debug exe no longer carries the test channel.
+
+## 12. Stage 9 end-to-end tests
+
+```bash
+node e2e/density.mjs ../../target/debug/night-client.exe
+```
+```bash
+node e2e/mod-plans.mjs ../../target/debug/night-client.exe
+```
+
+`density` checks the compact layout (sizes, 24 px targets, axe, persistence). `mod-plans` uses the real
+Modrinth API: optional dependencies on a Fabric instance, and Fabric mods on a Quilt instance. Both
+use a throwaway profile. The Quilt network install runs with
+`NC_LOADERS=quilt cargo test --release -p nc-launcher --test loaders -- --ignored --nocapture`.

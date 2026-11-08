@@ -100,6 +100,12 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
   against the Maven repository's SHA-1, not against a publisher signature.
 - **A user-chosen Java** is executed as given. It must be named `java.exe` or `javaw.exe` and live on a
   local drive.
+- **Java found through the registry** (Stage 9) comes from HKLM or HKCU, and HKCU is writable by any
+  program the user runs. Such a folder is treated like one on PATH: only local absolute paths are
+  accepted, it must pass the same inspection, and it is only used when the user picks it or it is the
+  best match. A runtime without a `release` file is asked for `java -version` during the scan.
+- **Quilt** (Stage 9) libraries are checked against the Maven `.sha1` sidecars on `maven.quiltmc.org`
+  and `maven.fabricmc.net`, as for Fabric: integrity in transit, not a publisher signature.
 - **Custom game folders may be on network shares.** That is data only, but mods placed there are run
   by the game.
 - **Builds are unsigned** until Stage 8, and WebView2 is trusted as provided by Windows.
