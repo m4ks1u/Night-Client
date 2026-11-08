@@ -54,6 +54,7 @@ macro_rules! app_commands {
             commands::mods::modrinth_project,
             commands::mods::modrinth_categories,
             commands::mods::open_modrinth_page,
+            commands::window::show_snap_layouts,
             commands::mods::mod_install_plan,
             commands::mods::mod_install,
             commands::mods::list_mods,

@@ -9,6 +9,7 @@ pub mod instances;
 pub mod java;
 pub mod mods;
 pub mod versions;
+pub mod window;
 
 use std::sync::Arc;
 

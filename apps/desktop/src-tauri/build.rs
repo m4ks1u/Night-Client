@@ -34,6 +34,7 @@ const COMMANDS: &[&str] = &[
     "modrinth_project",
     "modrinth_categories",
     "open_modrinth_page",
+    "show_snap_layouts",
     "mod_install_plan",
     "mod_install",
     "list_mods",

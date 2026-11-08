@@ -45,6 +45,7 @@
     "allow-modrinth-project",
     "allow-modrinth-categories",
     "allow-open-modrinth-page",
+    "allow-show-snap-layouts",
     "allow-mod-install-plan",
     "allow-mod-install",
     "allow-list-mods",
