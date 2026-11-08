@@ -1,7 +1,8 @@
-//! Files in an instance's `mods` folder.
+//! Files in an instance's content folders: `mods`, `resourcepacks` and
+//! `shaderpacks` (see `ContentKind`).
 //!
-//! A disabled mod is the same file renamed to `<name>.jar.disabled`, which
-//! every loader ignores. Downloads go through the verified engine (SHA-1 and
+//! A disabled file is the same file renamed to `<name>.jar.disabled` (or
+//! `.zip.disabled`), which loaders, the game and shader mods all ignore. Downloads go through the verified engine (SHA-1 and
 //! size), then SHA-512 is checked as well before the file is kept.
 
 use std::{
@@ -13,7 +14,9 @@ use serde::Serialize;
 use sha2::{Digest, Sha512};
 use tokio_util::sync::CancellationToken;
 
-use super::api::{Version, trusted_file_url, valid_mod_file_name};
+use nc_core::content::ContentKind;
+
+use super::api::{Version, trusted_file_url, valid_file_name, valid_mod_file_name};
 use crate::{
     LauncherError,
     download::{DownloadTask, Downloader},
@@ -26,6 +29,11 @@ pub const MAX_LOCAL_JAR: u64 = 256 * 1024 * 1024;
 
 pub fn mods_dir(game_dir: &Path) -> PathBuf {
     game_dir.join("mods")
+}
+
+/// Folder for one kind of content inside a game directory.
+pub fn content_dir(game_dir: &Path, kind: ContentKind) -> PathBuf {
+    game_dir.join(kind.folder())
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -53,10 +61,16 @@ fn sha512_file(path: &Path) -> std::io::Result<String> {
     Ok(hex::encode(h.finalize()))
 }
 
-fn path_for(dir: &Path, file_name: &str, enabled: bool) -> Result<PathBuf, LauncherError> {
-    if !valid_mod_file_name(file_name) {
+fn path_for(
+    dir: &Path,
+    kind: ContentKind,
+    file_name: &str,
+    enabled: bool,
+) -> Result<PathBuf, LauncherError> {
+    if !valid_file_name(kind, file_name) {
         return Err(LauncherError::InvalidPath(format!(
-            "{file_name}: not a valid mod file name"
+            "{file_name}: not a valid {} file name",
+            kind.as_str()
         )));
     }
     Ok(if enabled {
@@ -66,8 +80,8 @@ fn path_for(dir: &Path, file_name: &str, enabled: bool) -> Result<PathBuf, Launc
     })
 }
 
-/// Current files in the mods folder (hashing each; call off the async runtime).
-pub fn scan(dir: &Path) -> Result<Vec<ModFile>, LauncherError> {
+/// Current files of `kind` in `dir` (hashing each; call off the async runtime).
+pub fn scan(dir: &Path, kind: ContentKind) -> Result<Vec<ModFile>, LauncherError> {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return Ok(Vec::new());
     };
@@ -81,8 +95,8 @@ pub fn scan(dir: &Path) -> Result<Vec<ModFile>, LauncherError> {
             Some(n) => (n.to_owned(), false),
             None => (name.clone(), true),
         };
-        if !valid_mod_file_name(&file_name) {
-            continue; // not a mod jar (configs, .txt, …)
+        if !valid_file_name(kind, &file_name) {
+            continue; // not this kind of file (configs, .txt, …)
         }
         let path = e.path();
         out.push(ModFile {
@@ -102,6 +116,7 @@ pub fn scan(dir: &Path) -> Result<Vec<ModFile>, LauncherError> {
 pub async fn install_version(
     dl: &Downloader,
     dir: &Path,
+    kind: ContentKind,
     version: &Version,
     cancel: &CancellationToken,
 ) -> Result<ModFile, LauncherError> {
@@ -115,7 +130,7 @@ pub async fn install_version(
             file.url
         )));
     }
-    let dest = path_for(dir, &file.filename, true)?;
+    let dest = path_for(dir, kind, &file.filename, true)?;
     dl.fetch_all(
         vec![DownloadTask {
             url: file.url.clone(),
@@ -143,7 +158,7 @@ pub async fn install_version(
         ));
     }
     // A disabled copy of the same file would load nothing but confuse the list.
-    let _ = std::fs::remove_file(path_for(dir, &file.filename, false)?);
+    let _ = std::fs::remove_file(path_for(dir, kind, &file.filename, false)?);
     Ok(ModFile {
         file_name: file.filename.clone(),
         enabled: true,
@@ -153,18 +168,23 @@ pub async fn install_version(
     })
 }
 
-pub fn set_enabled(dir: &Path, file_name: &str, enabled: bool) -> Result<(), LauncherError> {
-    let from = path_for(dir, file_name, !enabled)?;
-    let to = path_for(dir, file_name, enabled)?;
+pub fn set_enabled(
+    dir: &Path,
+    kind: ContentKind,
+    file_name: &str,
+    enabled: bool,
+) -> Result<(), LauncherError> {
+    let from = path_for(dir, kind, file_name, !enabled)?;
+    let to = path_for(dir, kind, file_name, enabled)?;
     if to.exists() && !from.exists() {
         return Ok(()); // already in the requested state
     }
     std::fs::rename(&from, &to).map_err(LauncherError::io(&from))
 }
 
-pub fn remove(dir: &Path, file_name: &str) -> Result<(), LauncherError> {
+pub fn remove(dir: &Path, kind: ContentKind, file_name: &str) -> Result<(), LauncherError> {
     for enabled in [true, false] {
-        let p = path_for(dir, file_name, enabled)?;
+        let p = path_for(dir, kind, file_name, enabled)?;
         match std::fs::remove_file(&p) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -280,7 +300,7 @@ pub fn import_local(
         )));
     }
     std::fs::create_dir_all(dir).map_err(LauncherError::io(dir))?;
-    let dest = path_for(dir, &name, true)?;
+    let dest = path_for(dir, ContentKind::Mod, &name, true)?;
     let tmp = dir.join(format!("{name}.{}.tmp", std::process::id()));
     std::fs::copy(src, &tmp).map_err(LauncherError::io(&tmp))?;
     std::fs::rename(&tmp, &dest).map_err(LauncherError::io(&dest))?;
@@ -323,22 +343,54 @@ mod tests {
         jar(&mods, "b.jar", &[]);
         std::fs::write(mods.join("notes.txt"), "x").unwrap();
 
-        assert_eq!(scan(&mods).unwrap().len(), 2);
-        set_enabled(&mods, "b.jar", false).unwrap();
+        assert_eq!(scan(&mods, ContentKind::Mod).unwrap().len(), 2);
+        set_enabled(&mods, ContentKind::Mod, "b.jar", false).unwrap();
         assert!(mods.join("b.jar.disabled").is_file());
-        let list = scan(&mods).unwrap();
+        let list = scan(&mods, ContentKind::Mod).unwrap();
         assert_eq!(
             (list[1].file_name.as_str(), list[1].enabled),
             ("b.jar", false)
         );
         assert_eq!(list[0].sha512.len(), 128);
-        set_enabled(&mods, "b.jar", false).unwrap(); // idempotent
-        set_enabled(&mods, "b.jar", true).unwrap();
-        remove(&mods, "a.jar").unwrap();
-        remove(&mods, "a.jar").unwrap(); // idempotent
-        assert_eq!(scan(&mods).unwrap().len(), 1);
-        assert!(set_enabled(&mods, "../evil.jar", true).is_err());
-        assert!(remove(&mods, "..\\x.jar").is_err());
+        set_enabled(&mods, ContentKind::Mod, "b.jar", false).unwrap(); // idempotent
+        set_enabled(&mods, ContentKind::Mod, "b.jar", true).unwrap();
+        remove(&mods, ContentKind::Mod, "a.jar").unwrap();
+        remove(&mods, ContentKind::Mod, "a.jar").unwrap(); // idempotent
+        assert_eq!(scan(&mods, ContentKind::Mod).unwrap().len(), 1);
+        assert!(set_enabled(&mods, ContentKind::Mod, "../evil.jar", true).is_err());
+        assert!(remove(&mods, ContentKind::Mod, "..\\x.jar").is_err());
+    }
+
+    #[test]
+    fn pack_folders_list_only_zip_files() {
+        let d = tempfile::tempdir().unwrap();
+        let packs = content_dir(d.path(), ContentKind::ResourcePack);
+        assert!(packs.ends_with("resourcepacks"));
+        std::fs::create_dir_all(packs.join("unpacked")).unwrap();
+        std::fs::write(packs.join("faithful.zip"), b"PK").unwrap();
+        std::fs::write(packs.join("old.zip.disabled"), b"PK").unwrap();
+        std::fs::write(packs.join("stray.jar"), b"PK").unwrap();
+        std::fs::write(packs.join(".zip"), b"PK").unwrap();
+        let list = scan(&packs, ContentKind::ResourcePack).unwrap();
+        assert_eq!(
+            list.iter()
+                .map(|f| (f.file_name.as_str(), f.enabled))
+                .collect::<Vec<_>>(),
+            [("faithful.zip", true), ("old.zip", false)],
+            "folders, other extensions and a bare extension are skipped"
+        );
+        set_enabled(&packs, ContentKind::ResourcePack, "faithful.zip", false).unwrap();
+        assert!(packs.join("faithful.zip.disabled").is_file());
+        assert!(set_enabled(&packs, ContentKind::ResourcePack, "stray.jar", false).is_err());
+        assert!(
+            scan(&packs, ContentKind::Mod).unwrap().len() == 1,
+            "the .jar, as a mod"
+        );
+        assert!(
+            scan(&d.path().join("shaderpacks"), ContentKind::Shader)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

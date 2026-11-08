@@ -12,6 +12,8 @@ const NAV: { route: Route; label: string; icon: ReactNode; keywords?: string }[]
   { route: { name: "instances" }, label: "Instances", icon: <Boxes size={15} /> },
   { route: { name: "new-instance" }, label: "New instance", icon: <Plus size={15} />, keywords: "create add" },
   { route: { name: "discover" }, label: "Discover mods", icon: <Compass size={15} />, keywords: "modrinth search browse" },
+  { route: { name: "discover", kind: "resourcepack" }, label: "Discover resource packs", icon: <Compass size={15} />, keywords: "modrinth textures" },
+  { route: { name: "discover", kind: "shader" }, label: "Discover shader packs", icon: <Compass size={15} />, keywords: "modrinth shaders iris" },
   { route: { name: "downloads" }, label: "Downloads", icon: <Download size={15} />, keywords: "queue history" },
   { route: { name: "accounts" }, label: "Accounts", icon: <UserRound size={15} />, keywords: "microsoft sign in login" },
   { route: { name: "settings" }, label: "Settings", icon: <Settings size={15} />, keywords: "preferences memory java" },
@@ -41,7 +43,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const listId = useId();
 
   const commands = useMemo<Command[]>(() => {
-    const nav = NAV.map((n) => ({ id: `nav:${n.route.name}`, label: n.label, hint: "Go to", icon: n.icon, keywords: n.keywords, run: () => navigate(n.route) }));
+    const nav = NAV.map((n) => ({ id: `nav:${n.route.name}${n.route.name === "discover" && n.route.kind ? `:${n.route.kind}` : ""}`, label: n.label, hint: "Go to", icon: n.icon, keywords: n.keywords, run: () => navigate(n.route) }));
     const inst = instances.flatMap((i) => [
       { id: `open:${i.id}`, label: i.name, hint: i.label, icon: <Boxes size={15} />, keywords: "open instance", run: () => navigate({ name: "instance", id: i.id }) },
       {

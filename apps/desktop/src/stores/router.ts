@@ -1,11 +1,14 @@
 import { create } from "zustand";
+import type { ContentKind } from "../lib/ipc";
+
+export type InstanceTab = "overview" | "mods" | "resourcepacks" | "shaders" | "log";
 
 export type Route =
   | { name: "home" }
   | { name: "instances" }
   | { name: "new-instance" }
-  | { name: "instance"; id: string; tab?: "overview" | "mods" | "log" }
-  | { name: "discover"; instanceId?: string }
+  | { name: "instance"; id: string; tab?: InstanceTab }
+  | { name: "discover"; instanceId?: string; kind?: ContentKind }
   | { name: "downloads" }
   | { name: "accounts" }
   | { name: "settings" }

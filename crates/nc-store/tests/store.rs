@@ -551,11 +551,12 @@ fn loader_version_and_game_dir_patches() {
 
 // ------------------------------------------------------------------ mods ----
 
-use nc_store::{ModRecord, ModSource};
+use nc_store::{ContentKind, ModRecord, ModSource};
 
 fn modrec(instance: &str, file: &str) -> ModRecord {
     ModRecord {
         instance_id: instance.into(),
+        kind: ContentKind::Mod,
         file_name: file.into(),
         source: ModSource::Modrinth,
         project_id: Some("AANobbMI".into()),
@@ -588,19 +589,81 @@ fn mods_crud_and_cascade_on_instance_delete() {
     );
     assert!(list[1].installed_at > 0);
 
-    s.set_mod_enabled(&i.id, "sodium.jar", false).unwrap();
+    s.set_mod_enabled(&i.id, ContentKind::Mod, "sodium.jar", false)
+        .unwrap();
     assert!(!s.list_mods(&i.id).unwrap()[1].enabled);
-    assert!(s.set_mod_enabled(&i.id, "nope.jar", true).is_err());
+    assert!(
+        s.set_mod_enabled(&i.id, ContentKind::Mod, "nope.jar", true)
+            .is_err()
+    );
     let mut bad = modrec(&i.id, "x.jar");
     bad.sha512 = "short".into();
     assert!(s.upsert_mod(&bad).is_err());
 
-    s.remove_mod(&i.id, "lithium.jar").unwrap();
+    s.remove_mod(&i.id, ContentKind::Mod, "lithium.jar")
+        .unwrap();
     assert_eq!(s.list_mods(&i.id).unwrap().len(), 1);
+
+    // Packs live beside mods, keyed by kind: the same file name can exist in
+    // each folder, and listing, toggling and removing stay per kind.
+    let mut pack = modrec(&i.id, "sodium.jar");
+    pack.kind = ContentKind::ResourcePack;
+    pack.file_name = "faithful.zip".into();
+    pack.title = "Faithful".into();
+    s.upsert_mod(&pack).unwrap();
+    let mut shader = pack.clone();
+    shader.kind = ContentKind::Shader;
+    shader.title = "Complementary".into();
+    s.upsert_mod(&shader).unwrap();
+    assert_eq!(s.list_mods(&i.id).unwrap().len(), 1);
+    assert_eq!(
+        s.list_content(&i.id, ContentKind::ResourcePack).unwrap()[0].title,
+        "Faithful"
+    );
+    s.set_mod_enabled(&i.id, ContentKind::Shader, "faithful.zip", false)
+        .unwrap();
+    assert!(s.list_content(&i.id, ContentKind::ResourcePack).unwrap()[0].enabled);
+    s.remove_mod(&i.id, ContentKind::ResourcePack, "faithful.zip")
+        .unwrap();
+    assert_eq!(s.list_content(&i.id, ContentKind::Shader).unwrap().len(), 1);
     s.delete_instance(&i.id).unwrap();
     assert!(
         s.list_mods(&i.id).unwrap().is_empty(),
         "rows cascade with the instance"
+    );
+}
+
+const V5_MOD_ROW: &str = "INSERT INTO instance_mods (instance_id, file_name, source, project_id, version_id, title, version_number, icon_url, sha1, sha512, size, enabled, required_by, installed_at) VALUES (?1, 'sodium.jar', 'modrinth', 'AANobbMI', 'v1', 'Sodium', '0.8.13', NULL, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 10, 0, 'P2', 5)";
+
+#[test]
+fn v6_database_upgrades_to_v7_marking_rows_as_mods() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("nc.db");
+    let id = {
+        let s = Store::open_with_migrations(&path, &migrations::MIGRATIONS[..6]).unwrap();
+        let i = s.create_instance(new("Six"), |_| false).unwrap();
+        let c = Connection::open(&path).unwrap();
+        c.execute(V5_MOD_ROW, [&i.id]).unwrap();
+        i.id
+    };
+    let s = Store::open(&path).unwrap();
+    assert_eq!(s.schema_version().unwrap(), 7);
+    let m = s.list_mods(&id).unwrap();
+    assert_eq!(m.len(), 1);
+    assert_eq!(
+        (
+            m[0].kind,
+            m[0].title.as_str(),
+            m[0].required_by.as_deref(),
+            m[0].installed_at
+        ),
+        (ContentKind::Mod, "Sodium", Some("P2"), 5)
+    );
+    assert!(dir.path().join("nc.db.v6.bak").is_file());
+    s.delete_instance(&id).unwrap();
+    assert!(
+        s.list_mods(&id).unwrap().is_empty(),
+        "cascade still in place"
     );
 }
 
@@ -629,12 +692,13 @@ fn v5_database_upgrades_to_v6_keeping_instances_and_mods() {
         );
     }
     {
-        let s = Store::open_with_migrations(&path, &migrations::MIGRATIONS[..5]).unwrap();
-        s.upsert_mod(&modrec(id, "sodium.jar")).unwrap();
+        // A mod row as v5-era code wrote it (no `kind` column yet).
+        let c = Connection::open(&path).unwrap();
+        c.execute(V5_MOD_ROW, [id]).unwrap();
     }
 
     let s = Store::open(&path).unwrap();
-    assert_eq!(s.schema_version().unwrap(), 6);
+    assert_eq!(s.schema_version().unwrap(), 7);
     let i = s.get_instance(id).unwrap();
     assert_eq!(
         (
@@ -658,7 +722,12 @@ fn v5_database_upgrades_to_v6_keeping_instances_and_mods() {
             Some(r"D:\Games\mc")
         )
     );
-    assert_eq!(s.list_mods(id).unwrap().len(), 1, "mod rows survive");
+    let mods = s.list_mods(id).unwrap();
+    assert_eq!(mods.len(), 1, "mod rows survive");
+    assert_eq!(
+        (mods[0].kind, mods[0].file_name.as_str(), mods[0].enabled),
+        (ContentKind::Mod, "sodium.jar", false)
+    );
     assert!(dir.path().join("nc.db.v5.bak").is_file());
 
     let mut q = new("Quilt");

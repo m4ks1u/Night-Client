@@ -1,3 +1,8 @@
+//! Metadata for files in an instance's content folders (mods, resource
+//! packs, shader packs). The folders are the source of truth; rows are
+//! re-synced when a folder is listed.
+
+pub use nc_core::content::ContentKind;
 use rusqlite::{Row, params};
 use serde::Serialize;
 
@@ -14,6 +19,7 @@ pub enum ModSource {
 #[serde(rename_all = "camelCase")]
 pub struct ModRecord {
     pub instance_id: String,
+    pub kind: ContentKind,
     pub file_name: String,
     pub source: ModSource,
     pub project_id: Option<String>,
@@ -29,43 +35,56 @@ pub struct ModRecord {
     pub installed_at: i64,
 }
 
-const COLS: &str = "instance_id, file_name, source, project_id, version_id, title, version_number, icon_url, sha1, sha512, size, enabled, required_by, installed_at";
+const COLS: &str = "instance_id, kind, file_name, source, project_id, version_id, title, version_number, icon_url, sha1, sha512, size, enabled, required_by, installed_at";
 
 fn from_row(r: &Row<'_>) -> rusqlite::Result<ModRecord> {
-    let source: String = r.get(2)?;
+    let kind: String = r.get(1)?;
+    let source: String = r.get(3)?;
     Ok(ModRecord {
         instance_id: r.get(0)?,
-        file_name: r.get(1)?,
+        kind: ContentKind::parse(&kind).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                1,
+                rusqlite::types::Type::Text,
+                format!("unknown content kind {kind}").into(),
+            )
+        })?,
+        file_name: r.get(2)?,
         source: if source == "modrinth" {
             ModSource::Modrinth
         } else {
             ModSource::Local
         },
-        project_id: r.get(3)?,
-        version_id: r.get(4)?,
-        title: r.get(5)?,
-        version_number: r.get(6)?,
-        icon_url: r.get(7)?,
-        sha1: r.get(8)?,
-        sha512: r.get(9)?,
-        size: r.get(10)?,
-        enabled: r.get::<_, i64>(11)? == 1,
-        required_by: r.get(12)?,
-        installed_at: r.get(13)?,
+        project_id: r.get(4)?,
+        version_id: r.get(5)?,
+        title: r.get(6)?,
+        version_number: r.get(7)?,
+        icon_url: r.get(8)?,
+        sha1: r.get(9)?,
+        sha512: r.get(10)?,
+        size: r.get(11)?,
+        enabled: r.get::<_, i64>(12)? == 1,
+        required_by: r.get(13)?,
+        installed_at: r.get(14)?,
     })
 }
 
 impl Store {
+    /// Mods of an instance (shorthand for `list_content(id, Mod)`).
     pub fn list_mods(&self, instance_id: &str) -> Result<Vec<ModRecord>> {
+        self.list_content(instance_id, ContentKind::Mod)
+    }
+
+    pub fn list_content(&self, instance_id: &str, kind: ContentKind) -> Result<Vec<ModRecord>> {
         let conn = self.lock();
         let mut stmt = conn.prepare(&format!(
-            "SELECT {COLS} FROM instance_mods WHERE instance_id = ?1 ORDER BY lower(title)"
+            "SELECT {COLS} FROM instance_mods WHERE instance_id = ?1 AND kind = ?2 ORDER BY lower(title)"
         ))?;
-        let rows = stmt.query_map([instance_id], from_row)?;
+        let rows = stmt.query_map(params![instance_id, kind.as_str()], from_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// Insert or replace the row for `(instance_id, file_name)`.
+    /// Insert or replace the row for `(instance_id, kind, file_name)`.
     pub fn upsert_mod(&self, m: &ModRecord) -> Result<()> {
         if m.title.is_empty() || m.title.len() > 256 || m.sha512.len() != 128 || m.sha1.len() != 40
         {
@@ -77,9 +96,10 @@ impl Store {
             m.installed_at
         };
         self.lock().execute(
-            &format!("INSERT OR REPLACE INTO instance_mods ({COLS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"),
+            &format!("INSERT OR REPLACE INTO instance_mods ({COLS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)"),
             params![
                 m.instance_id,
+                m.kind.as_str(),
                 m.file_name,
                 if m.source == ModSource::Modrinth { "modrinth" } else { "local" },
                 m.project_id,
@@ -98,10 +118,16 @@ impl Store {
         Ok(())
     }
 
-    pub fn set_mod_enabled(&self, instance_id: &str, file_name: &str, enabled: bool) -> Result<()> {
+    pub fn set_mod_enabled(
+        &self,
+        instance_id: &str,
+        kind: ContentKind,
+        file_name: &str,
+        enabled: bool,
+    ) -> Result<()> {
         let n = self.lock().execute(
-            "UPDATE instance_mods SET enabled = ?3 WHERE instance_id = ?1 AND file_name = ?2",
-            params![instance_id, file_name, enabled as i64],
+            "UPDATE instance_mods SET enabled = ?4 WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3",
+            params![instance_id, kind.as_str(), file_name, enabled as i64],
         )?;
         if n == 0 {
             Err(StoreError::NotFound)
@@ -110,10 +136,10 @@ impl Store {
         }
     }
 
-    pub fn remove_mod(&self, instance_id: &str, file_name: &str) -> Result<()> {
+    pub fn remove_mod(&self, instance_id: &str, kind: ContentKind, file_name: &str) -> Result<()> {
         self.lock().execute(
-            "DELETE FROM instance_mods WHERE instance_id = ?1 AND file_name = ?2",
-            params![instance_id, file_name],
+            "DELETE FROM instance_mods WHERE instance_id = ?1 AND kind = ?2 AND file_name = ?3",
+            params![instance_id, kind.as_str(), file_name],
         )?;
         Ok(())
     }

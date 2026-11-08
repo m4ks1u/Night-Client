@@ -96,8 +96,11 @@ export type InstallPlan = Plan & {
   options: Plan[];
   titles: Record<string, string>;
 };
+/** Kinds of Modrinth content: each has its own folder in the game directory. */
+export type ContentKind = "mod" | "resourcepack" | "shader";
 export type ModRecord = {
   instanceId: string;
+  kind: ContentKind;
   fileName: string;
   source: "modrinth" | "local";
   projectId: string | null;
@@ -245,18 +248,22 @@ export const api = {
   switchAccount: (uuid: string) => invoke<Account>("switch_account", { uuid }),
   removeAccount: (uuid: string) => invoke<Account | null>("remove_account", { uuid }),
 
-  modrinthSearch: (instanceId: string, query: string, category: string | null, sort: SortIndex, offset: number) =>
-    invoke<SearchView>("modrinth_search", { instanceId, query, category, sort, offset }),
-  openModrinthPage: (slug: string) => invoke<void>("open_modrinth_page", { slug }),
-  modrinthCategories: () => invoke<Category[]>("modrinth_categories"),
-  modInstallPlan: (instanceId: string, projectId: string) => invoke<InstallPlan>("mod_install_plan", { instanceId, projectId }),
-  modInstall: (instanceId: string, items: { versionId: string; requiredBy: string | null }[]) =>
-    invoke<ModRecord[]>("mod_install", { instanceId, items }),
-  listMods: (instanceId: string) => invoke<ModRecord[]>("list_mods", { instanceId }),
-  setModEnabled: (instanceId: string, fileName: string, enabled: boolean) => invoke<void>("set_mod_enabled", { instanceId, fileName, enabled }),
-  removeMod: (instanceId: string, fileName: string) => invoke<void>("remove_mod", { instanceId, fileName }),
-  checkModUpdates: (instanceId: string) => invoke<ModUpdate[]>("check_mod_updates", { instanceId }),
-  updateMods: (instanceId: string, fileNames: string[]) => invoke<UpdateSummary>("update_mods", { instanceId, fileNames }),
+  // Content commands take an optional kind; the backend defaults to mods.
+  modrinthSearch: (instanceId: string, query: string, category: string | null, sort: SortIndex, offset: number, kind: ContentKind = "mod") =>
+    invoke<SearchView>("modrinth_search", { instanceId, query, category, sort, offset, kind }),
+  openModrinthPage: (slug: string, kind: ContentKind = "mod") => invoke<void>("open_modrinth_page", { slug, kind }),
+  modrinthCategories: (kind: ContentKind = "mod") => invoke<Category[]>("modrinth_categories", { kind }),
+  modInstallPlan: (instanceId: string, projectId: string, kind: ContentKind = "mod") =>
+    invoke<InstallPlan>("mod_install_plan", { instanceId, projectId, kind }),
+  modInstall: (instanceId: string, items: { versionId: string; requiredBy: string | null }[], kind: ContentKind = "mod") =>
+    invoke<ModRecord[]>("mod_install", { instanceId, items, kind }),
+  listMods: (instanceId: string, kind: ContentKind = "mod") => invoke<ModRecord[]>("list_mods", { instanceId, kind }),
+  setModEnabled: (instanceId: string, fileName: string, enabled: boolean, kind: ContentKind = "mod") =>
+    invoke<void>("set_mod_enabled", { instanceId, fileName, enabled, kind }),
+  removeMod: (instanceId: string, fileName: string, kind: ContentKind = "mod") => invoke<void>("remove_mod", { instanceId, fileName, kind }),
+  checkModUpdates: (instanceId: string, kind: ContentKind = "mod") => invoke<ModUpdate[]>("check_mod_updates", { instanceId, kind }),
+  updateMods: (instanceId: string, fileNames: string[], kind: ContentKind = "mod") =>
+    invoke<UpdateSummary>("update_mods", { instanceId, fileNames, kind }),
   importLocalMod: (instanceId: string) => invoke<{ record: ModRecord; warnings: string[] } | null>("import_local_mod", { instanceId }),
 
   runningInstances: () => invoke<Running[]>("running_instances"),

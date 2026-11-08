@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use nc_core::content::ContentKind;
 use nc_launcher::{
     CancellationToken,
     download::{Downloader, DownloaderConfig},
@@ -47,7 +48,8 @@ async fn search_sends_user_agent_facets_and_caches() {
         .search(
             &SearchQuery {
                 query: "sod",
-                loader: "fabric",
+                kind: ContentKind::Mod,
+                loaders: &["fabric"],
                 minecraft: "1.21.1",
                 category: Some("optimization"),
                 sort: SortIndex::Downloads,
@@ -63,7 +65,8 @@ async fn search_sends_user_agent_facets_and_caches() {
     m.search(
         &SearchQuery {
             query: "sod",
-            loader: "fabric",
+            kind: ContentKind::Mod,
+            loaders: &["fabric"],
             minecraft: "1.21.1",
             category: Some("optimization"),
             sort: SortIndex::Downloads,
@@ -92,6 +95,70 @@ async fn search_sends_user_agent_facets_and_caches() {
     ] {
         assert!(facets.contains(f), "{f} missing from {facets}");
     }
+}
+
+#[tokio::test]
+async fn pack_searches_use_their_project_type_and_loader_tags() {
+    let s = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/search"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(search_body()))
+        .mount(&s)
+        .await;
+    let m = Modrinth::with_base(UA, &s.uri()).unwrap();
+    let c = CancellationToken::new();
+    for kind in [ContentKind::ResourcePack, ContentKind::Shader] {
+        m.search(
+            &SearchQuery {
+                query: "",
+                kind,
+                loaders: kind.modrinth_loaders("fabric"),
+                minecraft: "1.21.1",
+                category: None,
+                sort: SortIndex::Relevance,
+                offset: 0,
+                limit: 20,
+            },
+            &c,
+        )
+        .await
+        .unwrap();
+    }
+    let reqs = s.received_requests().await.unwrap();
+    let facets: Vec<String> = reqs
+        .iter()
+        .map(|r| {
+            r.url
+                .query_pairs()
+                .find(|(k, _)| k == "facets")
+                .unwrap()
+                .1
+                .into_owned()
+        })
+        .collect();
+    let rp: serde_json::Value = serde_json::from_str(&facets[0]).unwrap();
+    assert_eq!(
+        rp,
+        json!([
+            ["project_type:resourcepack"],
+            ["categories:minecraft"],
+            ["versions:1.21.1"]
+        ]),
+        "no client_side facet for packs"
+    );
+    let sh: serde_json::Value = serde_json::from_str(&facets[1]).unwrap();
+    assert_eq!(
+        sh,
+        json!([
+            ["project_type:shader"],
+            [
+                "categories:iris",
+                "categories:optifine",
+                "categories:vanilla"
+            ],
+            ["versions:1.21.1"]
+        ])
+    );
 }
 
 #[tokio::test]
@@ -197,7 +264,8 @@ async fn real_api_plan_and_install_with_dependency() {
         .search(
             &SearchQuery {
                 query: "iris",
-                loader: "fabric",
+                kind: ContentKind::Mod,
+                loaders: &["fabric"],
                 minecraft: "1.21.1",
                 category: None,
                 sort: SortIndex::Relevance,
@@ -214,11 +282,11 @@ async fn real_api_plan_and_install_with_dependency() {
         .find(|h| h.slug.as_deref() == Some("iris"))
         .expect("iris in results");
     let versions = m
-        .project_versions(&iris.project_id, "fabric", "1.21.1", &c)
+        .project_versions(&iris.project_id, &["fabric"], "1.21.1", &c)
         .await
         .unwrap();
-    let root = pick_best(versions, "fabric", "1.21.1").unwrap();
-    let p = plan::plan(&m, root, "fabric", "1.21.1", &HashSet::new(), &c)
+    let root = pick_best(versions, &["fabric"], "1.21.1").unwrap();
+    let p = plan::plan(&m, root, &["fabric"], "1.21.1", &HashSet::new(), &c)
         .await
         .unwrap();
     let projects: Vec<_> = p
@@ -243,12 +311,12 @@ async fn real_api_plan_and_install_with_dependency() {
     let dir = tempfile::tempdir().unwrap();
     let dl = Downloader::new(&nc_launcher::user_agent(), DownloaderConfig::default()).unwrap();
     for item in &p.install {
-        let f = mods::install_version(&dl, dir.path(), &item.version, &c)
+        let f = mods::install_version(&dl, dir.path(), ContentKind::Mod, &item.version, &c)
             .await
             .unwrap();
         assert_eq!(f.sha512.len(), 128);
     }
-    let files = mods::scan(dir.path()).unwrap();
+    let files = mods::scan(dir.path(), ContentKind::Mod).unwrap();
     assert_eq!(files.len(), p.install.len());
 
     // Identify by hash and check for updates, as the Mods tab does.
@@ -260,7 +328,7 @@ async fn real_api_plan_and_install_with_dependency() {
         "every installed file is recognised by hash"
     );
     let latest = m
-        .latest_by_hash(&hashes, "fabric", "1.21.1", &c)
+        .latest_by_hash(&hashes, &["fabric"], "1.21.1", &c)
         .await
         .unwrap();
     assert_eq!(latest.len(), files.len());

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Check, Compass, Download, ExternalLink, Heart, Plus, Search } from "lucide-react";
+import { Check, Compass, Download, ExternalLink, Heart, Info, Plus, Search } from "lucide-react";
 import { Button } from "../components/Button";
 import { InstallPlanDialog, ModIcon } from "../components/ModParts";
 import { Badge, EmptyState, ErrorState, PageHeader, Skeleton, inputClass } from "../components/ui";
-import { api, toCmdError, type Category, type CmdError, type SearchHit, type SortIndex } from "../lib/ipc";
+import { api, toCmdError, type Category, type CmdError, type ContentKind, type SearchHit, type SortIndex } from "../lib/ipc";
+import { COMPAT_TAGS, CONTENT, CONTENT_KINDS, kindAvailable, usageHint } from "../lib/content";
 import { formatCount } from "../lib/format";
 import { useApp } from "../stores/app";
 import { navigate } from "../stores/router";
@@ -16,11 +17,18 @@ const SORTS: { value: SortIndex; label: string }[] = [
   { value: "newest", label: "Newest" },
 ];
 
-export function Discover({ instanceId }: { instanceId?: string }) {
+export function Discover({ instanceId, kind: initialKind = "mod" }: { instanceId?: string; kind?: ContentKind }) {
+  const [kind, setKind] = useState<ContentKind>(initialKind);
+  const c = CONTENT[kind];
   const instances = useApp((s) => s.instances);
-  const modded = useMemo(() => (instances.status === "ready" ? instances.data.filter((i) => i.loader !== "vanilla") : []), [instances]);
+  // Instances that can use this kind: mods need a loader, packs work everywhere.
+  const modded = useMemo(
+    () => (instances.status === "ready" ? instances.data.filter((i) => kindAvailable(kind, i.loader)) : []),
+    [instances, kind],
+  );
   const [selected, setSelected] = useState<string | null>(instanceId ?? null);
   const instance = modded.find((i) => i.id === selected) ?? modded[0] ?? null;
+  const hint = instance && kind === "shader" ? usageHint(kind, instance.loader) : null;
 
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -40,8 +48,9 @@ export function Discover({ instanceId }: { instanceId?: string }) {
     return () => clearTimeout(t);
   }, [query]);
   useEffect(() => {
-    api.modrinthCategories().then(setCategories).catch(() => setCategories([]));
-  }, []);
+    setCategory(null);
+    api.modrinthCategories(kind).then(setCategories).catch(() => setCategories([]));
+  }, [kind]);
 
   const search = useCallback(
     async (offset: number) => {
@@ -50,7 +59,7 @@ export function Discover({ instanceId }: { instanceId?: string }) {
       if (offset === 0) setHits(null);
       setError(null);
       try {
-        const r = await api.modrinthSearch(instance.id, debounced, category, sort, offset);
+        const r = await api.modrinthSearch(instance.id, debounced, category, sort, offset, kind);
         if (mine !== request.current) return; // a newer search started
         setTotal(r.total);
         setHits((prev) => (offset === 0 || !prev ? r.hits : [...prev, ...r.hits]));
@@ -58,18 +67,41 @@ export function Discover({ instanceId }: { instanceId?: string }) {
         if (mine === request.current) setError(toCmdError(e));
       }
     },
-    [instance, debounced, category, sort],
+    [instance, debounced, category, sort, kind],
+  );
+
+  const kindSwitch = (
+    <div role="group" aria-label="Content type" className="mb-4 inline-flex rounded-md border border-line bg-surface-1 p-0.5">
+      {CONTENT_KINDS.map((k) => (
+        <button
+          key={k}
+          type="button"
+          aria-pressed={kind === k}
+          onClick={() => setKind(k)}
+          className={`h-7 rounded px-3 text-xs font-medium transition-colors duration-(--duration-fast) ${
+            kind === k ? "bg-accent-soft text-accent" : "text-fg-muted hover:text-fg"
+          }`}
+        >
+          {CONTENT[k].tab}
+        </button>
+      ))}
+    </div>
   );
   useEffect(() => void search(0), [search]);
 
   if (instances.status === "ready" && modded.length === 0) {
     return (
       <div>
-        <PageHeader title="Discover mods" subtitle="Browse Modrinth for Fabric, Quilt, NeoForge and Forge mods." />
+        <PageHeader title="Discover" subtitle="Browse Modrinth for mods, resource packs and shader packs." />
+        {kindSwitch}
         <EmptyState
           icon={<Compass size={20} />}
-          title="Create a modded instance first"
-          body="Mods need a mod loader. Create an instance with Fabric, Quilt, NeoForge or Forge, then come back here."
+          title={kind === "mod" ? "Create a modded instance first" : "Create an instance first"}
+          body={
+            kind === "mod"
+              ? "Mods need a mod loader. Create an instance with Fabric, Quilt, NeoForge or Forge, then come back here."
+              : `${c.tab} are installed into an instance. Create one, then come back here.`
+          }
           action={
             <Button variant="primary" icon={<Plus size={15} />} onClick={() => navigate({ name: "new-instance" })}>
               New instance
@@ -83,8 +115,8 @@ export function Discover({ instanceId }: { instanceId?: string }) {
   return (
     <div>
       <PageHeader
-        title="Discover mods"
-        subtitle={instance ? `Showing mods for ${instance.label}. Results from Modrinth.` : "Results from Modrinth."}
+        title="Discover"
+        subtitle={instance ? `Showing ${c.plural} for ${instance.label}. Results from Modrinth.` : "Results from Modrinth."}
         actions={
           modded.length > 0 && (
             <>
@@ -105,13 +137,20 @@ export function Discover({ instanceId }: { instanceId?: string }) {
         }
       />
 
+      {kindSwitch}
+      {hint && (
+        <p className="mb-3 flex items-start gap-2 text-xs text-fg-muted">
+          <Info size={13} className="mt-0.5 shrink-0" /> {hint}
+        </p>
+      )}
+
       <div className="mb-3 flex gap-2">
         <div className="relative min-w-0 flex-1">
           <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-fg-faint" />
           <label htmlFor={ids.q} className="sr-only">
-            Search mods
+            Search {c.plural}
           </label>
-          <input id={ids.q} type="search" placeholder="Search mods" value={query} onChange={(e) => setQuery(e.target.value)} className={`${inputClass} pl-8`} />
+          <input id={ids.q} type="search" placeholder={`Search ${c.plural}`} value={query} onChange={(e) => setQuery(e.target.value)} className={`${inputClass} pl-8`} />
         </div>
         <label htmlFor={ids.sort} className="sr-only">
           Sort by
@@ -154,7 +193,7 @@ export function Discover({ instanceId }: { instanceId?: string }) {
           ))}
         </div>
       ) : hits.length === 0 ? (
-        <p className="py-12 text-center text-[13px] text-fg-muted">No mods match. Try other words or another category.</p>
+        <p className="py-12 text-center text-[13px] text-fg-muted">No {c.plural} match. Try other words or another category.</p>
       ) : (
         <>
           <p className="mb-2 text-xs text-fg-faint" aria-live="polite">
@@ -174,7 +213,7 @@ export function Discover({ instanceId }: { instanceId?: string }) {
                     <span className="flex items-center gap-1"><Download size={12} /> {formatCount(h.downloads)}</span>
                     <span className="flex items-center gap-1"><Heart size={12} /> {formatCount(h.follows)}</span>
                     {h.display_categories
-                      .filter((c) => !["fabric", "neoforge", "forge", "quilt"].includes(c))
+                      .filter((c) => !COMPAT_TAGS.includes(c))
                       .slice(0, 3)
                       .map((c) => (
                         <Badge key={c}>{c.replace(/-/g, " ")}</Badge>
@@ -194,7 +233,7 @@ export function Discover({ instanceId }: { instanceId?: string }) {
                   {h.slug && (
                     <button
                       type="button"
-                      onClick={() => void api.openModrinthPage(h.slug!)}
+                      onClick={() => void api.openModrinthPage(h.slug!, kind)}
                       className="flex items-center gap-1 text-xs text-fg-faint hover:text-fg"
                       aria-label={`Open ${h.title} on Modrinth`}
                     >
@@ -225,6 +264,7 @@ export function Discover({ instanceId }: { instanceId?: string }) {
       {instance && (
         <InstallPlanDialog
           instanceId={instance.id}
+          kind={kind}
           projectId={installing?.project_id ?? null}
           title={installing?.title ?? ""}
           onClose={() => setInstalling(null)}

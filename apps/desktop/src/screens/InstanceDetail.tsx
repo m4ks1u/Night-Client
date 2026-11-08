@@ -11,9 +11,17 @@ import { InstanceJava } from "../components/JavaPicker";
 import { JvmArgsCard } from "../components/JvmArgs";
 import { ModsTab } from "../components/ModsTab";
 import { GameFolder, LoaderCard } from "../components/InstanceSettings";
-import { navigate, useRouter } from "../stores/router";
+import { navigate, useRouter, type InstanceTab } from "../stores/router";
 
-export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: "overview" | "mods" | "log" }) {
+const TAB_LABEL: Record<InstanceTab, string> = {
+  overview: "Overview",
+  mods: "Mods",
+  resourcepacks: "Resource packs",
+  shaders: "Shaders",
+  log: "Game log",
+};
+
+export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: InstanceTab }) {
   const instances = useApp((s) => s.instances);
   const refresh = useApp((s) => s.refreshInstances);
   const back = useRouter((s) => s.back);
@@ -50,7 +58,10 @@ export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: "ov
       </header>
 
       <div role="tablist" aria-label="Instance sections" className="mb-5 flex gap-1 border-b border-line">
-        {(instance.loader === "vanilla" ? (["overview", "log"] as const) : (["overview", "mods", "log"] as const)).map((t) => (
+        {(instance.loader === "vanilla"
+          ? (["overview", "resourcepacks", "shaders", "log"] as const)
+          : (["overview", "mods", "resourcepacks", "shaders", "log"] as const)
+        ).map((t) => (
           <button
             key={t}
             role="tab"
@@ -59,7 +70,7 @@ export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: "ov
             onClick={() => navigate({ name: "instance", id, tab: t })}
             className={`-mb-px border-b-2 px-3 pb-2.5 text-[13px] font-medium transition-colors ${tab === t ? "border-accent text-fg" : "border-transparent text-fg-muted hover:text-fg"}`}
           >
-            {t === "overview" ? "Overview" : t === "mods" ? "Mods" : "Game log"}
+            {TAB_LABEL[t]}
           </button>
         ))}
       </div>
@@ -67,7 +78,11 @@ export function InstanceDetail({ id, tab = "overview" }: { id: string; tab?: "ov
       {tab === "overview" ? (
         <Overview instance={instance} />
       ) : tab === "mods" && instance.loader !== "vanilla" ? (
-        <ModsTab instance={instance} />
+        <ModsTab key="mod" instance={instance} />
+      ) : tab === "resourcepacks" ? (
+        <ModsTab key="resourcepack" instance={instance} kind="resourcepack" />
+      ) : tab === "shaders" ? (
+        <ModsTab key="shader" instance={instance} kind="shader" />
       ) : (
         <GameLog instance={instance} />
       )}

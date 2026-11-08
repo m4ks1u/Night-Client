@@ -33,7 +33,7 @@ function Screen({ route }: { route: Route }) {
     case "instance":
       return <InstanceDetail id={route.id} tab={route.tab} />;
     case "discover":
-      return <Discover instanceId={route.instanceId} />;
+      return <Discover key={route.kind ?? "mod"} instanceId={route.instanceId} kind={route.kind} />;
     case "downloads":
       return <Downloads />;
     case "accounts":

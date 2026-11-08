@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Package } from "lucide-react";
 import { Button } from "./Button";
 import { Dialog, InlineError } from "./ui";
-import { api, toCmdError, type CmdError, type InstallPlan, type PlannedMod } from "../lib/ipc";
+import { api, toCmdError, type CmdError, type ContentKind, type InstallPlan, type PlannedMod } from "../lib/ipc";
 import { formatBytes } from "../lib/format";
 
 /** Project icon from Modrinth's CDN (allowed by the CSP), lazy, with a fallback. */
@@ -56,8 +56,9 @@ export function itemsToInstall(plan: InstallPlan, chosen: ReadonlySet<string>): 
  * already-satisfied ones, missing ones, declared conflicts and optional
  * extras (off by default) before anything is written.
  */
-export function InstallPlanDialog({ instanceId, projectId, title, onClose, onInstalled }: {
+export function InstallPlanDialog({ instanceId, projectId, title, kind = "mod", onClose, onInstalled }: {
   instanceId: string;
+  kind?: ContentKind;
   projectId: string | null;
   title: string;
   onClose: () => void;
@@ -75,8 +76,8 @@ export function InstallPlanDialog({ instanceId, projectId, title, onClose, onIns
     setAck(false);
     setChosen(new Set());
     if (!projectId) return;
-    api.modInstallPlan(instanceId, projectId).then(setPlan).catch((e) => setError(toCmdError(e)));
-  }, [instanceId, projectId]);
+    api.modInstallPlan(instanceId, projectId, kind).then(setPlan).catch((e) => setError(toCmdError(e)));
+  }, [instanceId, projectId, kind]);
 
   const name = (id: string) => plan?.titles[id] ?? id;
   const picked = plan ? plan.options.filter((o) => o.install[0] && chosen.has(o.install[0].version.project_id)) : [];
@@ -92,6 +93,7 @@ export function InstallPlanDialog({ instanceId, projectId, title, onClose, onIns
       await api.modInstall(
         instanceId,
         items.map((m) => ({ versionId: m.version.id, requiredBy: m.requiredBy })),
+        kind,
       );
       onInstalled();
       onClose();
@@ -121,7 +123,7 @@ export function InstallPlanDialog({ instanceId, projectId, title, onClose, onIns
       {error ? (
         <InlineError error={error} />
       ) : !plan ? (
-        <p className="flex items-center gap-2 py-3"><Loader2 size={14} className="animate-spin" /> Checking versions and dependencies…</p>
+        <p className="flex items-center gap-2 py-3"><Loader2 size={14} className="animate-spin" /> {kind === "mod" ? "Checking versions and dependencies…" : "Checking versions…"}</p>
       ) : (
         <div className="flex flex-col gap-3">
           <ul className="flex flex-col gap-1.5">
@@ -200,7 +202,9 @@ export function InstallPlanDialog({ instanceId, projectId, title, onClose, onIns
               <input type="checkbox" className="accent-accent" checked={ack} onChange={(e) => setAck(e.target.checked)} />I understand this may not work.
             </label>
           )}
-          <p className="text-2xs text-fg-faint">Only declared dependencies and conflicts can be checked. Some mods conflict in ways no launcher can detect in advance.</p>
+          {kind === "mod" && (
+            <p className="text-2xs text-fg-faint">Only declared dependencies and conflicts can be checked. Some mods conflict in ways no launcher can detect in advance.</p>
+          )}
         </div>
       )}
     </Dialog>

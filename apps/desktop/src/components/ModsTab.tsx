@@ -1,10 +1,11 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowUpCircle, Compass, FilePlus2, Loader2, Package, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
+import { ArrowUpCircle, Compass, FilePlus2, Info, Loader2, Package, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
 import { Button } from "./Button";
 import { ModIcon } from "./ModParts";
 import { Badge, Dialog, EmptyState, ErrorState, InlineError, Skeleton, Toggle } from "./ui";
-import { api, toCmdError, type CmdError, type Instance, type ModRecord, type ModUpdate, type UpdateSummary } from "../lib/ipc";
+import { api, toCmdError, type CmdError, type ContentKind, type Instance, type ModRecord, type ModUpdate, type UpdateSummary } from "../lib/ipc";
+import { CONTENT, usageHint } from "../lib/content";
 import { formatBytes } from "../lib/format";
 import { useApp } from "../stores/app";
 import { navigate } from "../stores/router";
@@ -30,10 +31,10 @@ const listClass = "overflow-hidden rounded-lg border border-line bg-surface-1";
  * render only the rows near the viewport of the page's scroll container,
  * with aria-setsize/posinset so screen readers still announce the total.
  */
-function ModList({ mods, renderRow }: { mods: ModRecord[]; renderRow: (m: ModRecord) => ReactNode }) {
+function ModList({ mods, label, renderRow }: { mods: ModRecord[]; label: string; renderRow: (m: ModRecord) => ReactNode }) {
   if (mods.length <= VIRTUALIZE_ABOVE) {
     return (
-      <ul className={`divide-y divide-line ${listClass}`} aria-label="Installed mods">
+      <ul className={`divide-y divide-line ${listClass}`} aria-label={label}>
         {mods.map((m) => (
           <li key={m.fileName} className={rowClass(m)}>
             {renderRow(m)}
@@ -42,10 +43,10 @@ function ModList({ mods, renderRow }: { mods: ModRecord[]; renderRow: (m: ModRec
       </ul>
     );
   }
-  return <VirtualModList mods={mods} renderRow={renderRow} />;
+  return <VirtualModList mods={mods} label={label} renderRow={renderRow} />;
 }
 
-function VirtualModList({ mods, renderRow }: { mods: ModRecord[]; renderRow: (m: ModRecord) => ReactNode }) {
+function VirtualModList({ mods, label, renderRow }: { mods: ModRecord[]; label: string; renderRow: (m: ModRecord) => ReactNode }) {
   const listRef = useRef<HTMLUListElement>(null);
   const [margin, setMargin] = useState(0);
   const scroller = () => document.getElementById("main");
@@ -63,7 +64,7 @@ function VirtualModList({ mods, renderRow }: { mods: ModRecord[]; renderRow: (m:
     getItemKey: (i) => mods[i]!.fileName,
   });
   return (
-    <ul ref={listRef} className={`relative ${listClass}`} style={{ height: v.getTotalSize() }} aria-label="Installed mods">
+    <ul ref={listRef} className={`relative ${listClass}`} style={{ height: v.getTotalSize() }} aria-label={label}>
       {v.getVirtualItems().map((item) => {
         const m = mods[item.index]!;
         return (
@@ -84,7 +85,10 @@ function VirtualModList({ mods, renderRow }: { mods: ModRecord[]; renderRow: (m:
   );
 }
 
-export function ModsTab({ instance }: { instance: Instance }) {
+/** Installed content of one kind (mods by default) for an instance. */
+export function ModsTab({ instance, kind = "mod" }: { instance: Instance; kind?: ContentKind }) {
+  const c = CONTENT[kind];
+  const hint = usageHint(kind, instance.loader);
   const running = useApp((s) => instance.id in s.running);
   const [mods, setMods] = useState<ModRecord[] | null>(null);
   const [loadError, setLoadError] = useState<CmdError | null>(null);
@@ -97,11 +101,11 @@ export function ModsTab({ instance }: { instance: Instance }) {
   const load = useCallback(async () => {
     setLoadError(null);
     try {
-      setMods(await api.listMods(instance.id));
+      setMods(await api.listMods(instance.id, kind));
     } catch (e) {
       setLoadError(toCmdError(e));
     }
-  }, [instance.id]);
+  }, [instance.id, kind]);
   useEffect(() => void load(), [load]);
 
   async function run(label: string, fn: () => Promise<unknown>) {
@@ -122,32 +126,34 @@ export function ModsTab({ instance }: { instance: Instance }) {
   // So removing Sodium warns about the mod named in its own `requiredBy`.
   const dependents = (m: ModRecord) => (mods ?? []).filter((x) => m.requiredBy && x.projectId === m.requiredBy && x.fileName !== m.fileName);
 
-  if (loadError) return <ErrorState title="Mods could not be listed" error={loadError} onRetry={() => void load()} />;
+  if (loadError) return <ErrorState title={`${c.tab} could not be listed`} error={loadError} onRetry={() => void load()} />;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" size="sm" icon={<Compass size={13} />} onClick={() => navigate({ name: "discover", instanceId: instance.id })}>
+        <Button variant="primary" size="sm" icon={<Compass size={13} />} onClick={() => navigate({ name: "discover", instanceId: instance.id, kind })}>
           Browse Modrinth
         </Button>
-        <Button
-          size="sm"
-          icon={<FilePlus2 size={13} />}
-          disabled={running || busy !== null}
-          onClick={() =>
-            void run("import", async () => {
-              const r = await api.importLocalMod(instance.id);
-              setNotice(r?.warnings ?? []);
-            })
-          }
-        >
-          Add file
-        </Button>
+        {kind === "mod" && (
+          <Button
+            size="sm"
+            icon={<FilePlus2 size={13} />}
+            disabled={running || busy !== null}
+            onClick={() =>
+              void run("import", async () => {
+                const r = await api.importLocalMod(instance.id);
+                setNotice(r?.warnings ?? []);
+              })
+            }
+          >
+            Add file
+          </Button>
+        )}
         <Button
           size="sm"
           icon={busy === "check" ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
           disabled={busy !== null || !mods?.some((m) => m.source === "modrinth")}
-          onClick={() => void run("check", async () => setUpdates(await api.checkModUpdates(instance.id)))}
+          onClick={() => void run("check", async () => setUpdates(await api.checkModUpdates(instance.id, kind)))}
         >
           Check for updates
         </Button>
@@ -159,7 +165,11 @@ export function ModsTab({ instance }: { instance: Instance }) {
             disabled={running || busy !== null}
             onClick={() =>
               void run("update", async () => {
-                const s = await api.updateMods(instance.id, updates.map((u) => u.fileName));
+                const s = await api.updateMods(
+                  instance.id,
+                  updates.map((u) => u.fileName),
+                  kind,
+                );
                 setUpdates([]);
                 setNotice(updateNotices(s));
               })
@@ -168,9 +178,15 @@ export function ModsTab({ instance }: { instance: Instance }) {
             Update all ({updates.length})
           </Button>
         )}
-        {updates && updates.length === 0 && busy === null && <span className="text-xs text-success">All mods are up to date.</span>}
-        {running && <span className="ml-auto text-xs text-fg-faint">Close the game to change mods.</span>}
+        {updates && updates.length === 0 && busy === null && <span className="text-xs text-success">All {c.plural} are up to date.</span>}
+        {running && <span className="ml-auto text-xs text-fg-faint">Close the game to change {c.plural}.</span>}
       </div>
+
+      {hint && (
+        <p className="flex items-start gap-2 text-xs text-fg-muted">
+          <Info size={13} className="mt-0.5 shrink-0" /> {hint}
+        </p>
+      )}
 
       {error && <InlineError error={error} />}
       {notice.length > 0 && (
@@ -187,10 +203,15 @@ export function ModsTab({ instance }: { instance: Instance }) {
       {!mods ? (
         <Skeleton className="h-40" />
       ) : mods.length === 0 ? (
-        <EmptyState icon={<Package size={20} />} title="No mods yet" body="Find mods on Modrinth, or add a .jar file you already have." />
+        <EmptyState
+          icon={<Package size={20} />}
+          title={`No ${c.plural} yet`}
+          body={kind === "mod" ? "Find mods on Modrinth, or add a .jar file you already have." : `Find ${c.plural} on Modrinth.`}
+        />
       ) : (
         <ModList
           mods={mods}
+          label={`Installed ${c.plural}`}
           renderRow={(m) => {
             const up = updateFor(m.fileName);
             return (
@@ -209,10 +230,10 @@ export function ModsTab({ instance }: { instance: Instance }) {
                 </div>
                 <div className="w-28">
                   <Toggle
-                    id={`mod-${m.fileName}`}
+                    id={`${kind}-${m.fileName}`}
                     checked={m.enabled}
                     disabled={running || busy !== null}
-                    onChange={(v) => void run("toggle", () => api.setModEnabled(instance.id, m.fileName, v))}
+                    onChange={(v) => void run("toggle", () => api.setModEnabled(instance.id, m.fileName, v, kind))}
                     label={m.enabled ? "Enabled" : "Disabled"}
                   />
                 </div>
@@ -235,7 +256,7 @@ export function ModsTab({ instance }: { instance: Instance }) {
               onClick={() => {
                 const m = removing;
                 setRemoving(null);
-                if (m) void run("remove", () => api.removeMod(instance.id, m.fileName));
+                if (m) void run("remove", () => api.removeMod(instance.id, m.fileName, kind));
               }}
             >
               Remove
@@ -243,7 +264,7 @@ export function ModsTab({ instance }: { instance: Instance }) {
           </>
         }
       >
-        The file <code className="font-mono text-fg">{removing?.fileName}</code> is deleted from this instance's mods folder.
+        The file <code className="font-mono text-fg">{removing?.fileName}</code> is deleted from this instance's {c.folder} folder.
         {removing && dependents(removing).length > 0 && (
           <span className="mt-2 block text-warning">
             Required by: {dependents(removing).map((d) => d.title).join(", ")}. They may stop working.

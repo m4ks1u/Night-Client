@@ -22,7 +22,7 @@ pub trait VersionSource {
     fn project_versions(
         &self,
         project: &str,
-        loader: &str,
+        loaders: &[&str],
         minecraft: &str,
         cancel: &CancellationToken,
     ) -> impl Future<Output = Result<Vec<Version>, ModrinthError>> + Send;
@@ -39,11 +39,11 @@ impl VersionSource for Modrinth {
     fn project_versions(
         &self,
         project: &str,
-        loader: &str,
+        loaders: &[&str],
         minecraft: &str,
         cancel: &CancellationToken,
     ) -> impl Future<Output = Result<Vec<Version>, ModrinthError>> + Send {
-        Modrinth::project_versions(self, project, loader, minecraft, cancel)
+        Modrinth::project_versions(self, project, loaders, minecraft, cancel)
     }
 }
 
@@ -72,11 +72,13 @@ pub struct Plan {
 }
 
 /// Prefer releases, then betas, then alphas; Modrinth returns newest first.
-/// When the newest pick is not built for the instance's own loader (a Fabric
-/// build on Quilt), a native build published the same day is preferred:
-/// mods that ship separate Fabric and Quilt files release them together.
-pub fn pick_best(mut versions: Vec<Version>, loader: &str, minecraft: &str) -> Option<Version> {
-    versions.retain(|v| v.supports(loader, minecraft) && v.primary_file().is_some());
+/// `loaders` are the accepted Modrinth loader tags, the instance's own first.
+/// When the newest pick is not built for that first loader (a Fabric build
+/// on Quilt), a native build published the same day is preferred: mods that
+/// ship separate Fabric and Quilt files release them together.
+pub fn pick_best(mut versions: Vec<Version>, loaders: &[&str], minecraft: &str) -> Option<Version> {
+    versions.retain(|v| v.supports(loaders, minecraft) && v.primary_file().is_some());
+    let loader = loaders.first().copied().unwrap_or_default();
     let rank = |t: &str| match t {
         "release" => 0,
         "beta" => 1,
@@ -107,7 +109,7 @@ pub const MAX_OPTIONAL: usize = 8;
 pub async fn plan(
     source: &impl VersionSource,
     root: Version,
-    loader: &str,
+    loaders: &[&str],
     minecraft: &str,
     installed: &HashSet<String>,
     cancel: &CancellationToken,
@@ -154,13 +156,13 @@ pub async fn plan(
                     if !seen.insert(project.clone()) {
                         continue;
                     }
-                    let chosen = match pinned.filter(|v| v.supports(loader, minecraft)) {
+                    let chosen = match pinned.filter(|v| v.supports(loaders, minecraft)) {
                         Some(v) => Some(v),
                         None => pick_best(
                             source
-                                .project_versions(&project, loader, minecraft, cancel)
+                                .project_versions(&project, loaders, minecraft, cancel)
                                 .await?,
-                            loader,
+                            loaders,
                             minecraft,
                         ),
                     };
@@ -206,6 +208,8 @@ pub async fn plan(
 mod tests {
     use std::collections::HashMap;
 
+    use nc_core::loader::mod_loaders;
+
     use super::*;
     use crate::modrinth::api::{Dependency, Hashes, VersionFile};
 
@@ -223,14 +227,14 @@ mod tests {
         async fn project_versions(
             &self,
             project: &str,
-            loader: &str,
+            loaders: &[&str],
             mc: &str,
             _: &CancellationToken,
         ) -> Result<Vec<Version>, ModrinthError> {
             Ok(self
                 .versions
                 .values()
-                .filter(|v| v.project_id == project && v.supports(loader, mc))
+                .filter(|v| v.project_id == project && v.supports(loaders, mc))
                 .cloned()
                 .collect())
         }
@@ -290,7 +294,7 @@ mod tests {
         let p = plan(
             &src,
             root,
-            "fabric",
+            mod_loaders("fabric"),
             "1.21.1",
             &HashSet::new(),
             &CancellationToken::new(),
@@ -325,7 +329,7 @@ mod tests {
         let p = plan(
             &src,
             root,
-            "fabric",
+            mod_loaders("fabric"),
             "1.21.1",
             &installed,
             &CancellationToken::new(),
@@ -348,7 +352,7 @@ mod tests {
         assert_eq!(
             pick_best(
                 vec![wrong.clone(), beta.clone(), release],
-                "fabric",
+                mod_loaders("fabric"),
                 "1.21.1"
             )
             .unwrap()
@@ -356,7 +360,9 @@ mod tests {
             "rel"
         );
         assert_eq!(
-            pick_best(vec![beta, wrong], "fabric", "1.21.1").unwrap().id,
+            pick_best(vec![beta, wrong], mod_loaders("fabric"), "1.21.1")
+                .unwrap()
+                .id,
             "beta"
         );
     }
@@ -367,12 +373,12 @@ mod tests {
         let mut quilt = v("qui", "A", "release", &[]);
         quilt.loaders = vec!["quilt".into()];
         assert_eq!(
-            pick_best(vec![fabric.clone()], "quilt", "1.21.1")
+            pick_best(vec![fabric.clone()], mod_loaders("quilt"), "1.21.1")
                 .unwrap()
                 .id,
             "fab"
         );
-        assert!(pick_best(vec![quilt.clone()], "fabric", "1.21.1").is_none());
+        assert!(pick_best(vec![quilt.clone()], mod_loaders("fabric"), "1.21.1").is_none());
 
         // Same-day native build wins on Quilt; an older one does not.
         let mut fab_new = v("fab-new", "A", "release", &[]);
@@ -383,7 +389,7 @@ mod tests {
         let mut qui_old = quilt.clone();
         qui_old.id = "qui-old".into();
         qui_old.date_published = "2026-10-01T09:00:00Z".into();
-        let ids = |vs: Vec<Version>, l: &str| pick_best(vs, l, "1.21.1").unwrap().id;
+        let ids = |vs: Vec<Version>, l: &str| pick_best(vs, mod_loaders(l), "1.21.1").unwrap().id;
         assert_eq!(
             ids(
                 vec![fab_new.clone(), qui_same.clone(), qui_old.clone()],
@@ -396,6 +402,6 @@ mod tests {
             "fab-new"
         );
         assert_eq!(ids(vec![fab_new, qui_same], "fabric"), "fab-new");
-        assert!(pick_best(vec![fabric, quilt], "neoforge", "1.21.1").is_none());
+        assert!(pick_best(vec![fabric, quilt], mod_loaders("neoforge"), "1.21.1").is_none());
     }
 }

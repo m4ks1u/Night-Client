@@ -1,4 +1,6 @@
-//! Modrinth discovery and per-instance mod management.
+//! Modrinth discovery and per-instance content management: mods, resource
+//! packs and shader packs. Every command takes an optional `kind` (default:
+//! mods); each kind has its own folder and its own rows.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -13,7 +15,7 @@ use nc_launcher::{
         plan::{self, Plan, pick_best},
     },
 };
-use nc_store::{Instance, Loader, ModRecord, ModSource};
+use nc_store::{ContentKind, Instance, Loader, ModRecord, ModSource};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
@@ -21,23 +23,38 @@ use tauri_plugin_dialog::DialogExt;
 use super::{CmdError, Result, invalid, validate_instance_id, with_db};
 use crate::state::{AppState, lock};
 
-/// Instance + its loader name + mods folder; refuses vanilla instances.
-async fn ctx(state: &AppState, id: &str) -> Result<(Instance, &'static str, PathBuf)> {
-    validate_instance_id(id)?;
-    let lookup = id.to_owned();
-    let inst = with_db(state, move |db| db.get_instance(&lookup)).await?;
-    let loader = match inst.loader {
+/// What a command works on: the instance, the Modrinth loader tags accepted
+/// for `kind` there (the instance's own first), and the folder for `kind`.
+/// Mods are refused on vanilla instances; packs work everywhere.
+struct Ctx {
+    inst: Instance,
+    kind: ContentKind,
+    loaders: &'static [&'static str],
+    dir: PathBuf,
+}
+
+fn loader_name(l: Loader) -> &'static str {
+    match l {
+        Loader::Vanilla => "vanilla",
         Loader::Fabric => "fabric",
         Loader::Quilt => "quilt",
         Loader::Neoforge => "neoforge",
         Loader::Forge => "forge",
-        Loader::Vanilla => {
-            return Err(CmdError::new(
-                "no_loader",
-                "Vanilla instances can't use mods. Create a Fabric, Quilt, NeoForge or Forge instance.",
-            ));
-        }
-    };
+    }
+}
+
+async fn ctx(state: &AppState, id: &str, kind: Option<ContentKind>) -> Result<Ctx> {
+    validate_instance_id(id)?;
+    let kind = kind.unwrap_or_default();
+    let lookup = id.to_owned();
+    let inst = with_db(state, move |db| db.get_instance(&lookup)).await?;
+    let loader = loader_name(inst.loader);
+    if !kind.available_for(loader) {
+        return Err(CmdError::new(
+            "no_loader",
+            "Vanilla instances can't use mods. Create a Fabric, Quilt, NeoForge or Forge instance.",
+        ));
+    }
     let game_dir = match &inst.game_dir {
         Some(d) => PathBuf::from(d),
         None => state
@@ -45,7 +62,20 @@ async fn ctx(state: &AppState, id: &str) -> Result<(Instance, &'static str, Path
             .instance_dir(&inst.dir_name)
             .map_err(LauncherError::from)?,
     };
-    Ok((inst, loader, mods::mods_dir(&game_dir)))
+    Ok(Ctx {
+        loaders: kind.modrinth_loaders(loader),
+        dir: mods::content_dir(&game_dir, kind),
+        inst,
+        kind,
+    })
+}
+
+fn what(kind: ContentKind) -> &'static str {
+    match kind {
+        ContentKind::Mod => "mod",
+        ContentKind::ResourcePack => "resource pack",
+        ContentKind::Shader => "shader pack",
+    }
 }
 
 fn ensure_not_running(state: &AppState, id: &str) -> Result<()> {
@@ -53,7 +83,7 @@ fn ensure_not_running(state: &AppState, id: &str) -> Result<()> {
     if lock(&state.games).contains_key(id) {
         Err(CmdError::new(
             "busy",
-            "Close the game before changing its mods.",
+            "Close the game before changing its mods or packs.",
         ))
     } else {
         Ok(())
@@ -84,6 +114,7 @@ pub async fn modrinth_search(
     category: Option<String>,
     sort: SortIndex,
     offset: u32,
+    kind: Option<ContentKind>,
 ) -> Result<SearchView> {
     if query.len() > 200 {
         return Err(invalid("search text is too long"));
@@ -91,9 +122,14 @@ pub async fn modrinth_search(
     if category.as_deref().is_some_and(|c| !valid_id(c)) {
         return Err(invalid("invalid category"));
     }
-    let (inst, loader, _) = ctx(&state, &instance_id).await?;
+    let Ctx {
+        inst,
+        kind,
+        loaders,
+        ..
+    } = ctx(&state, &instance_id, kind).await?;
     let id = inst.id.clone();
-    let installed: HashSet<String> = with_db(&state, move |db| db.list_mods(&id))
+    let installed: HashSet<String> = with_db(&state, move |db| db.list_content(&id, kind))
         .await?
         .into_iter()
         .filter_map(|m| m.project_id)
@@ -103,7 +139,8 @@ pub async fn modrinth_search(
         .search(
             &SearchQuery {
                 query: query.trim(),
-                loader,
+                kind,
+                loaders,
                 minecraft: &inst.game_version,
                 category: category.as_deref(),
                 sort,
@@ -140,21 +177,25 @@ pub async fn modrinth_project(state: State<'_, AppState>, project_id: String) ->
 /// Open a project's Modrinth page in the system browser. Only validated
 /// slugs on modrinth.com can be opened this way.
 #[tauri::command]
-pub fn open_modrinth_page(app: AppHandle, slug: String) -> Result<()> {
+pub fn open_modrinth_page(app: AppHandle, slug: String, kind: Option<ContentKind>) -> Result<()> {
     use tauri_plugin_opener::OpenerExt;
     if !valid_id(&slug) {
         return Err(invalid("invalid project"));
     }
+    let kind = kind.unwrap_or_default().as_str();
     app.opener()
-        .open_url(format!("https://modrinth.com/mod/{slug}"), None::<&str>)
+        .open_url(format!("https://modrinth.com/{kind}/{slug}"), None::<&str>)
         .map_err(|e| CmdError::new("io", e.to_string()))
 }
 
 #[tauri::command]
-pub async fn modrinth_categories(state: State<'_, AppState>) -> Result<Vec<Category>> {
+pub async fn modrinth_categories(
+    state: State<'_, AppState>,
+    kind: Option<ContentKind>,
+) -> Result<Vec<Category>> {
     Ok(state
         .modrinth
-        .categories(&CancellationToken::new())
+        .categories(kind.unwrap_or_default(), &CancellationToken::new())
         .await
         .map_err(LauncherError::from)?)
 }
@@ -178,31 +219,73 @@ pub async fn mod_install_plan(
     state: State<'_, AppState>,
     instance_id: String,
     project_id: String,
+    kind: Option<ContentKind>,
 ) -> Result<PlanView> {
     if !valid_id(&project_id) {
         return Err(invalid("invalid project"));
     }
-    let (inst, loader, _) = ctx(&state, &instance_id).await?;
+    let Ctx {
+        inst,
+        kind,
+        loaders,
+        ..
+    } = ctx(&state, &instance_id, kind).await?;
+    let loader = loader_name(inst.loader);
     let c = CancellationToken::new();
     let mr = &state.modrinth;
     let versions = mr
-        .project_versions(&project_id, loader, &inst.game_version, &c)
+        .project_versions(&project_id, loaders, &inst.game_version, &c)
         .await
         .map_err(LauncherError::from)?;
-    let root = pick_best(versions, loader, &inst.game_version).ok_or(CmdError::new(
+    let root = pick_best(versions, loaders, &inst.game_version).ok_or(CmdError::new(
         "mod_incompatible",
-        format!(
-            "This mod has no version for {loader} on Minecraft {}.",
-            inst.game_version
-        ),
+        if kind == ContentKind::Mod {
+            format!(
+                "This mod has no version for {loader} on Minecraft {}.",
+                inst.game_version
+            )
+        } else {
+            format!(
+                "This {} has no version for Minecraft {}{}.",
+                what(kind),
+                inst.game_version,
+                if kind == ContentKind::Shader && loader == "vanilla" {
+                    " without a shader mod (Iris or OptiFine)"
+                } else {
+                    ""
+                }
+            )
+        },
     ))?;
+    if kind != ContentKind::Mod {
+        // Packs are single files: no dependency resolution. (Shader packs
+        // may list Iris as a dependency; that is a mod, installed separately.)
+        let mut titles = HashMap::new();
+        if let Ok(proj) = mr.project(&root.project_id, &c).await {
+            titles.insert(root.project_id.clone(), proj.title);
+        }
+        return Ok(PlanView {
+            plan: Plan {
+                install: vec![plan::PlannedMod {
+                    version: root,
+                    required_by: None,
+                }],
+                already_installed: Vec::new(),
+                missing: Vec::new(),
+                conflicts: Vec::new(),
+                optional: Vec::new(),
+            },
+            options: Vec::new(),
+            titles,
+        });
+    }
     let id = inst.id.clone();
     let installed: HashSet<String> = with_db(&state, move |db| db.list_mods(&id))
         .await?
         .into_iter()
         .filter_map(|m| m.project_id)
         .collect();
-    let p = plan::plan(mr, root, loader, &inst.game_version, &installed, &c)
+    let p = plan::plan(mr, root, loaders, &inst.game_version, &installed, &c)
         .await
         .map_err(LauncherError::from)?;
 
@@ -213,15 +296,15 @@ pub async fn mod_install_plan(
     let mut options = Vec::new();
     for pid in &p.optional {
         let Ok(vs) = mr
-            .project_versions(pid, loader, &inst.game_version, &c)
+            .project_versions(pid, loaders, &inst.game_version, &c)
             .await
         else {
             continue;
         };
-        let Some(v) = pick_best(vs, loader, &inst.game_version) else {
+        let Some(v) = pick_best(vs, loaders, &inst.game_version) else {
             continue;
         };
-        if let Ok(sub) = plan::plan(mr, v, loader, &inst.game_version, &have, &c).await {
+        if let Ok(sub) = plan::plan(mr, v, loaders, &inst.game_version, &have, &c).await {
             options.push(sub);
         }
     }
@@ -270,11 +353,17 @@ pub async fn mod_install(
     state: State<'_, AppState>,
     instance_id: String,
     items: Vec<InstallItem>,
+    kind: Option<ContentKind>,
 ) -> Result<Vec<ModRecord>> {
     if items.is_empty() || items.len() > 64 {
         return Err(invalid("nothing to install"));
     }
-    let (inst, loader, dir) = ctx(&state, &instance_id).await?;
+    let Ctx {
+        inst,
+        kind,
+        loaders,
+        dir,
+    } = ctx(&state, &instance_id, kind).await?;
     ensure_not_running(&state, &inst.id)?;
     let c = CancellationToken::new();
     tokio::fs::create_dir_all(&dir)
@@ -291,31 +380,41 @@ pub async fn mod_install(
             .version(&item.version_id, &c)
             .await
             .map_err(LauncherError::from)?;
-        if !v.supports(loader, &inst.game_version) {
+        if !v.supports(loaders, &inst.game_version) {
             return Err(CmdError::new(
                 "mod_incompatible",
-                format!("{} is not for {loader} {}.", v.name, inst.game_version),
+                format!(
+                    "{} is not a {} for {} {}.",
+                    v.name,
+                    what(kind),
+                    loader_name(inst.loader),
+                    inst.game_version
+                ),
             ));
         }
-        done.push(install_and_record(&state, &inst.id, &dir, &v, item.required_by, &c).await?);
+        done.push(
+            install_and_record(&state, &inst.id, kind, &dir, &v, item.required_by, &c).await?,
+        );
     }
     Ok(done)
 }
 
-/// Download and verify one Modrinth version into the mods folder and store
-/// its row (title and icon from the project, when reachable).
+/// Download and verify one Modrinth version into the folder for `kind` and
+/// store its row (title and icon from the project, when reachable).
 async fn install_and_record(
     state: &AppState,
     instance_id: &str,
+    kind: ContentKind,
     dir: &std::path::Path,
     v: &Version,
     required_by: Option<String>,
     c: &CancellationToken,
 ) -> Result<ModRecord> {
-    let file = mods::install_version(&state.meta().dl, dir, v, c).await?;
+    let file = mods::install_version(&state.meta().dl, dir, kind, v, c).await?;
     let proj = state.modrinth.project(&v.project_id, c).await.ok();
     let rec = ModRecord {
         instance_id: instance_id.to_owned(),
+        kind,
         file_name: file.file_name.clone(),
         source: ModSource::Modrinth,
         project_id: Some(v.project_id.clone()),
@@ -335,13 +434,14 @@ async fn install_and_record(
     };
     let r = rec.clone();
     with_db(state, move |db| db.upsert_mod(&r)).await?;
-    tracing::info!(instance = %instance_id, file = %file.file_name, "mod installed");
+    tracing::info!(instance = %instance_id, kind = kind.as_str(), file = %file.file_name, "content installed");
     Ok(rec)
 }
 
 fn stem(file_name: &str) -> String {
     file_name
         .strip_suffix(".jar")
+        .or_else(|| file_name.strip_suffix(".zip"))
         .unwrap_or(file_name)
         .to_owned()
 }
@@ -350,14 +450,21 @@ fn stem(file_name: &str) -> String {
 /// are dropped, new or replaced files are identified by SHA-512 on Modrinth
 /// (offline: recorded as local), and enabled state follows the disk.
 #[tauri::command]
-pub async fn list_mods(state: State<'_, AppState>, instance_id: String) -> Result<Vec<ModRecord>> {
-    let (inst, _, dir) = ctx(&state, &instance_id).await?;
+pub async fn list_mods(
+    state: State<'_, AppState>,
+    instance_id: String,
+    kind: Option<ContentKind>,
+) -> Result<Vec<ModRecord>> {
+    let Ctx {
+        inst, kind, dir, ..
+    } = ctx(&state, &instance_id, kind).await?;
     let scan_dir = dir.clone();
-    let files: Vec<ModFile> = tauri::async_runtime::spawn_blocking(move || mods::scan(&scan_dir))
-        .await
-        .map_err(|e| CmdError::new("internal", e.to_string()))??;
+    let files: Vec<ModFile> =
+        tauri::async_runtime::spawn_blocking(move || mods::scan(&scan_dir, kind))
+            .await
+            .map_err(|e| CmdError::new("internal", e.to_string()))??;
     let id = inst.id.clone();
-    let rows = with_db(&state, move |db| db.list_mods(&id)).await?;
+    let rows = with_db(&state, move |db| db.list_content(&id, kind)).await?;
     let by_name: HashMap<&str, &ModRecord> =
         rows.iter().map(|r| (r.file_name.as_str(), r)).collect();
     let on_disk: HashSet<&str> = files.iter().map(|f| f.file_name.as_str()).collect();
@@ -367,7 +474,7 @@ pub async fn list_mods(state: State<'_, AppState>, instance_id: String) -> Resul
         .filter(|r| !on_disk.contains(r.file_name.as_str()))
     {
         let (i, f) = (inst.id.clone(), r.file_name.clone());
-        with_db(&state, move |db| db.remove_mod(&i, &f)).await?;
+        with_db(&state, move |db| db.remove_mod(&i, kind, &f)).await?;
     }
 
     let mut unknown: Vec<&ModFile> = Vec::new();
@@ -376,7 +483,7 @@ pub async fn list_mods(state: State<'_, AppState>, instance_id: String) -> Resul
             Some(r) if r.sha512.eq_ignore_ascii_case(&f.sha512) => {
                 if r.enabled != f.enabled {
                     let (i, n, e) = (inst.id.clone(), f.file_name.clone(), f.enabled);
-                    with_db(&state, move |db| db.set_mod_enabled(&i, &n, e)).await?;
+                    with_db(&state, move |db| db.set_mod_enabled(&i, kind, &n, e)).await?;
                 }
             }
             _ => unknown.push(f),
@@ -389,7 +496,7 @@ pub async fn list_mods(state: State<'_, AppState>, instance_id: String) -> Resul
         let known = match state.modrinth.versions_by_hash(&hashes, &c).await {
             Ok(k) => k,
             Err(e) => {
-                tracing::warn!(error = %e, "could not identify mods on Modrinth; recording as local");
+                tracing::warn!(error = %e, "could not identify files on Modrinth; recording as local");
                 HashMap::new()
             }
         };
@@ -401,6 +508,7 @@ pub async fn list_mods(state: State<'_, AppState>, instance_id: String) -> Resul
             };
             let rec = ModRecord {
                 instance_id: inst.id.clone(),
+                kind,
                 file_name: f.file_name.clone(),
                 source: if v.is_some() {
                     ModSource::Modrinth
@@ -428,14 +536,14 @@ pub async fn list_mods(state: State<'_, AppState>, instance_id: String) -> Resul
         }
     }
     let id = inst.id.clone();
-    with_db(&state, move |db| db.list_mods(&id)).await
+    with_db(&state, move |db| db.list_content(&id, kind)).await
 }
 
-fn validate_file_name(name: &str) -> Result<()> {
-    if nc_launcher::modrinth::api::valid_mod_file_name(name) {
+fn validate_file_name(kind: Option<ContentKind>, name: &str) -> Result<()> {
+    if nc_launcher::modrinth::api::valid_file_name(kind.unwrap_or_default(), name) {
         Ok(())
     } else {
-        Err(invalid("invalid mod file name"))
+        Err(invalid("invalid file name"))
     }
 }
 
@@ -445,16 +553,19 @@ pub async fn set_mod_enabled(
     instance_id: String,
     file_name: String,
     enabled: bool,
+    kind: Option<ContentKind>,
 ) -> Result<()> {
-    validate_file_name(&file_name)?;
-    let (inst, _, dir) = ctx(&state, &instance_id).await?;
+    validate_file_name(kind, &file_name)?;
+    let Ctx {
+        inst, kind, dir, ..
+    } = ctx(&state, &instance_id, kind).await?;
     ensure_not_running(&state, &inst.id)?;
     let n = file_name.clone();
-    tauri::async_runtime::spawn_blocking(move || mods::set_enabled(&dir, &n, enabled))
+    tauri::async_runtime::spawn_blocking(move || mods::set_enabled(&dir, kind, &n, enabled))
         .await
         .map_err(|e| CmdError::new("internal", e.to_string()))??;
     with_db(&state, move |db| {
-        db.set_mod_enabled(&inst.id, &file_name, enabled)
+        db.set_mod_enabled(&inst.id, kind, &file_name, enabled)
     })
     .await
 }
@@ -464,16 +575,19 @@ pub async fn remove_mod(
     state: State<'_, AppState>,
     instance_id: String,
     file_name: String,
+    kind: Option<ContentKind>,
 ) -> Result<()> {
-    validate_file_name(&file_name)?;
-    let (inst, _, dir) = ctx(&state, &instance_id).await?;
+    validate_file_name(kind, &file_name)?;
+    let Ctx {
+        inst, kind, dir, ..
+    } = ctx(&state, &instance_id, kind).await?;
     ensure_not_running(&state, &inst.id)?;
     let n = file_name.clone();
-    tauri::async_runtime::spawn_blocking(move || mods::remove(&dir, &n))
+    tauri::async_runtime::spawn_blocking(move || mods::remove(&dir, kind, &n))
         .await
         .map_err(|e| CmdError::new("internal", e.to_string()))??;
-    tracing::info!(instance = %inst.id, file = %file_name, "mod removed");
-    with_db(&state, move |db| db.remove_mod(&inst.id, &file_name)).await
+    tracing::info!(instance = %inst.id, kind = kind.as_str(), file = %file_name, "content removed");
+    with_db(&state, move |db| db.remove_mod(&inst.id, kind, &file_name)).await
 }
 
 #[derive(Serialize)]
@@ -487,12 +601,12 @@ pub struct ModUpdate {
 
 async fn updates_for(
     state: &AppState,
-    inst: &Instance,
-    loader: &str,
+    cx: &Ctx,
     only: Option<&HashSet<String>>,
 ) -> Result<Vec<(ModRecord, Version)>> {
+    let (inst, kind, loaders) = (&cx.inst, cx.kind, cx.loaders);
     let id = inst.id.clone();
-    let rows: Vec<ModRecord> = with_db(state, move |db| db.list_mods(&id))
+    let rows: Vec<ModRecord> = with_db(state, move |db| db.list_content(&id, kind))
         .await?
         .into_iter()
         .filter(|r| {
@@ -504,7 +618,7 @@ async fn updates_for(
         .modrinth
         .latest_by_hash(
             &hashes,
-            loader,
+            loaders,
             &inst.game_version,
             &CancellationToken::new(),
         )
@@ -514,7 +628,7 @@ async fn updates_for(
         .into_iter()
         .filter_map(|r| {
             let v = latest.get(&r.sha512)?.clone();
-            (Some(&v.id) != r.version_id.as_ref() && v.supports(loader, &inst.game_version))
+            (Some(&v.id) != r.version_id.as_ref() && v.supports(loaders, &inst.game_version))
                 .then_some((r, v))
         })
         .collect())
@@ -524,9 +638,10 @@ async fn updates_for(
 pub async fn check_mod_updates(
     state: State<'_, AppState>,
     instance_id: String,
+    kind: Option<ContentKind>,
 ) -> Result<Vec<ModUpdate>> {
-    let (inst, loader, _) = ctx(&state, &instance_id).await?;
-    Ok(updates_for(&state, &inst, loader, None)
+    let cx = ctx(&state, &instance_id, kind).await?;
+    Ok(updates_for(&state, &cx, None)
         .await?
         .into_iter()
         .map(|(r, v)| ModUpdate {
@@ -557,43 +672,52 @@ pub async fn update_mods(
     state: State<'_, AppState>,
     instance_id: String,
     file_names: Vec<String>,
+    kind: Option<ContentKind>,
 ) -> Result<UpdateSummary> {
     for f in &file_names {
-        validate_file_name(f)?;
+        validate_file_name(kind, f)?;
     }
-    let (inst, loader, dir) = ctx(&state, &instance_id).await?;
+    let cx = ctx(&state, &instance_id, kind).await?;
+    let (inst, kind, loaders, dir) = (&cx.inst, cx.kind, cx.loaders, &cx.dir);
     ensure_not_running(&state, &inst.id)?;
     let only: HashSet<String> = file_names.into_iter().collect();
     let dl = state.meta().dl;
     let c = CancellationToken::new();
     let id = inst.id.clone();
-    let mut installed: HashSet<String> = with_db(&state, move |db| db.list_mods(&id))
+    let mut installed: HashSet<String> = with_db(&state, move |db| db.list_content(&id, kind))
         .await?
         .into_iter()
         .filter_map(|m| m.project_id)
         .collect();
     let mut summary = UpdateSummary::default();
     let mut n = 0;
-    for (old, v) in updates_for(&state, &inst, loader, Some(&only)).await? {
+    for (old, v) in updates_for(&state, &cx, Some(&only)).await? {
         // Resolve first, so a network failure leaves the old version in place.
-        let deps = plan::plan(
-            &state.modrinth,
-            v.clone(),
-            loader,
-            &inst.game_version,
-            &installed,
-            &c,
-        )
-        .await
-        .map_err(LauncherError::from)?;
-        let new = mods::install_version(&dl, &dir, &v, &c).await?;
+        // Packs have no dependencies to resolve.
+        let deps = if kind == ContentKind::Mod {
+            Some(
+                plan::plan(
+                    &state.modrinth,
+                    v.clone(),
+                    loaders,
+                    &inst.game_version,
+                    &installed,
+                    &c,
+                )
+                .await
+                .map_err(LauncherError::from)?,
+            )
+        } else {
+            None
+        };
+        let new = mods::install_version(&dl, dir, kind, &v, &c).await?;
         if new.file_name != old.file_name {
-            mods::remove(&dir, &old.file_name)?;
+            mods::remove(dir, kind, &old.file_name)?;
             let (i, f) = (inst.id.clone(), old.file_name.clone());
-            with_db(&state, move |db| db.remove_mod(&i, &f)).await?;
+            with_db(&state, move |db| db.remove_mod(&i, kind, &f)).await?;
         }
         if !old.enabled {
-            mods::set_enabled(&dir, &new.file_name, false)?;
+            mods::set_enabled(dir, kind, &new.file_name, false)?;
         }
         let rec = ModRecord {
             file_name: new.file_name.clone(),
@@ -608,9 +732,20 @@ pub async fn update_mods(
         with_db(&state, move |db| db.upsert_mod(&rec)).await?;
         n += 1;
 
+        let Some(deps) = deps else {
+            continue;
+        };
         for dep in deps.install.into_iter().filter(|p| p.required_by.is_some()) {
-            let rec = install_and_record(&state, &inst.id, &dir, &dep.version, dep.required_by, &c)
-                .await?;
+            let rec = install_and_record(
+                &state,
+                &inst.id,
+                kind,
+                dir,
+                &dep.version,
+                dep.required_by,
+                &c,
+            )
+            .await?;
             installed.insert(dep.version.project_id);
             summary.added_dependencies.push(rec.title);
         }
@@ -627,6 +762,7 @@ pub async fn update_mods(
     summary.updated = n;
     tracing::info!(
         instance = %inst.id,
+        kind = kind.as_str(),
         updated = n,
         added = summary.added_dependencies.len(),
         missing = summary.missing_dependencies.len(),
@@ -650,7 +786,8 @@ pub async fn import_local_mod(
     state: State<'_, AppState>,
     instance_id: String,
 ) -> Result<Option<Imported>> {
-    let (inst, loader, dir) = ctx(&state, &instance_id).await?;
+    let Ctx { inst, dir, .. } = ctx(&state, &instance_id, None).await?;
+    let loader = loader_name(inst.loader);
     ensure_not_running(&state, &inst.id)?;
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
@@ -692,6 +829,7 @@ pub async fn import_local_mod(
     }
     let rec = ModRecord {
         instance_id: inst.id.clone(),
+        kind: ContentKind::Mod,
         file_name: file.file_name.clone(),
         source: if v.is_some() {
             ModSource::Modrinth

@@ -15,6 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use nc_core::content::ContentKind;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio_util::sync::CancellationToken;
 
@@ -147,11 +148,10 @@ impl Version {
             .or_else(|| self.files.first())
     }
 
-    /// Runs on an instance of `loader` for `minecraft`. Quilt instances also
-    /// run Fabric mods (see `nc_core::loader::mod_loaders`).
-    pub fn supports(&self, loader: &str, minecraft: &str) -> bool {
-        let ok = nc_core::loader::mod_loaders(loader);
-        self.loaders.iter().any(|l| ok.contains(&l.as_str()))
+    /// Built for one of `loaders` (Modrinth loader tags, from
+    /// `ContentKind::modrinth_loaders`) and for `minecraft`.
+    pub fn supports(&self, loaders: &[&str], minecraft: &str) -> bool {
+        self.loaders.iter().any(|l| loaders.contains(&l.as_str()))
             && self.game_versions.iter().any(|g| g == minecraft)
     }
 }
@@ -218,7 +218,9 @@ impl SortIndex {
 #[derive(Debug, Clone, Copy)]
 pub struct SearchQuery<'a> {
     pub query: &'a str,
-    pub loader: &'a str,
+    pub kind: ContentKind,
+    /// Accepted Modrinth loader tags (`ContentKind::modrinth_loaders`).
+    pub loaders: &'a [&'a str],
     pub minecraft: &'a str,
     pub category: Option<&'a str>,
     pub sort: SortIndex,
@@ -242,8 +244,15 @@ pub fn trusted_file_url(url: &str) -> bool {
 
 /// A file name from the API that is safe to create in a mods folder.
 pub fn valid_mod_file_name(name: &str) -> bool {
+    valid_file_name(ContentKind::Mod, name)
+}
+
+/// A file name that is safe to create in the folder for `kind`, with that
+/// kind's extension (`.jar` for mods, `.zip` for packs).
+pub fn valid_file_name(kind: ContentKind, name: &str) -> bool {
     nc_core::paths::validate_segment(name).is_ok()
-        && name.to_ascii_lowercase().ends_with(".jar")
+        && name.to_ascii_lowercase().ends_with(kind.extension())
+        && name.len() > kind.extension().len()
         && name.len() <= 200
 }
 
@@ -420,7 +429,7 @@ impl Modrinth {
         serde_json::from_slice(&b).map_err(|e| ModrinthError::Parse(e.to_string()))
     }
 
-    /// Search mods compatible with `loader` and `minecraft`.
+    /// Search projects of one kind compatible with `loaders` and `minecraft`.
     pub async fn search(
         &self,
         q: &SearchQuery<'_>,
@@ -428,7 +437,8 @@ impl Modrinth {
     ) -> Result<SearchResponse, ModrinthError> {
         let SearchQuery {
             query,
-            loader,
+            kind,
+            loaders,
             minecraft,
             category,
             sort,
@@ -436,19 +446,18 @@ impl Modrinth {
             limit,
         } = *q;
         let mut facets = vec![
-            vec!["project_type:mod".to_owned()],
+            vec![format!("project_type:{}", kind.as_str())],
             // One OR group: a Quilt instance lists Quilt and Fabric mods.
-            nc_core::loader::mod_loaders(loader)
-                .iter()
-                .map(|l| format!("categories:{l}"))
-                .collect(),
+            loaders.iter().map(|l| format!("categories:{l}")).collect(),
             vec![format!("versions:{minecraft}")],
+        ];
+        if kind == ContentKind::Mod {
             // Hide server-only mods: they do nothing in a client instance.
-            vec![
+            facets.push(vec![
                 "client_side:required".to_owned(),
                 "client_side:optional".to_owned(),
-            ],
-        ];
+            ]);
+        }
         if let Some(c) = category {
             facets.push(vec![format!("categories:{c}")]);
         }
@@ -494,15 +503,15 @@ impl Modrinth {
     pub async fn project_versions(
         &self,
         project: &str,
-        loader: &str,
+        loaders: &[&str],
         minecraft: &str,
         cancel: &CancellationToken,
     ) -> Result<Vec<Version>, ModrinthError> {
         if !valid_id(project) {
             return Err(ModrinthError::NotFound);
         }
-        let loaders = serde_json::to_string(nc_core::loader::mod_loaders(loader))
-            .map_err(|e| ModrinthError::Parse(e.to_string()))?;
+        let loaders =
+            serde_json::to_string(loaders).map_err(|e| ModrinthError::Parse(e.to_string()))?;
         let games =
             serde_json::to_string(&[minecraft]).map_err(|e| ModrinthError::Parse(e.to_string()))?;
         let mut u = url::Url::parse(&format!("{}/project/{project}/version", self.base))
@@ -535,19 +544,21 @@ impl Modrinth {
     pub async fn latest_by_hash(
         &self,
         sha512: &[String],
-        loader: &str,
+        loaders: &[&str],
         minecraft: &str,
         cancel: &CancellationToken,
     ) -> Result<HashMap<String, Version>, ModrinthError> {
         if sha512.is_empty() {
             return Ok(HashMap::new());
         }
-        let body = serde_json::json!({ "hashes": sha512, "algorithm": "sha512", "loaders": nc_core::loader::mod_loaders(loader), "game_versions": [minecraft] });
+        let body = serde_json::json!({ "hashes": sha512, "algorithm": "sha512", "loaders": loaders, "game_versions": [minecraft] });
         self.post("/version_files/update", &body, cancel).await
     }
 
+    /// Browsing categories for one kind of project.
     pub async fn categories(
         &self,
+        kind: ContentKind,
         cancel: &CancellationToken,
     ) -> Result<Vec<Category>, ModrinthError> {
         let all: Vec<Category> = self
@@ -555,7 +566,7 @@ impl Modrinth {
             .await?;
         Ok(all
             .into_iter()
-            .filter(|c| c.project_type == "mod" && c.header == "categories")
+            .filter(|c| c.project_type == kind.as_str() && c.header == "categories")
             .collect())
     }
 }
