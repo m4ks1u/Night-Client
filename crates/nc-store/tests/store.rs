@@ -317,16 +317,24 @@ fn settings_roundtrip_defaults_and_corruption() {
 fn shipped_v1_database_upgrades_to_latest_keeping_instances() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("nc.db");
-    let id = {
-        let s = Store::open_with_migrations(&path, &migrations::MIGRATIONS[..1]).unwrap();
-        s.create_instance(new("From v1"), |_| false).unwrap().id
-    };
+    // Seed with raw SQL as v1-era code would have written it (today's API
+    // reads columns that a v1 schema does not have yet).
+    let id = "11111111-2222-4333-8444-555555555555";
+    {
+        drop(Store::open_with_migrations(&path, &migrations::MIGRATIONS[..1]).unwrap());
+        let c = Connection::open(&path).unwrap();
+        c.execute(
+            "INSERT INTO instances (id, name, dir_name, game_version, created_at) VALUES (?1, 'From v1', 'From v1', '1.21.1', 1)",
+            [id],
+        )
+        .unwrap();
+    }
     let s = Store::open(&path).unwrap();
     assert_eq!(
         s.schema_version().unwrap(),
         migrations::MIGRATIONS.len() as u32
     );
-    assert_eq!(s.get_instance(&id).unwrap().name, "From v1");
+    assert_eq!(s.get_instance(id).unwrap().name, "From v1");
     assert!(dir.path().join("nc.db.v1.bak").is_file());
     assert!(s.list_downloads(10).unwrap().is_empty());
 }
@@ -488,4 +496,49 @@ fn jvm_args_are_stored_and_bounded() {
         ..Default::default()
     };
     assert!(s.update_instance(&i.id, p).is_err());
+}
+
+#[test]
+fn loader_version_and_game_dir_patches() {
+    let s = Store::open_in_memory().unwrap();
+    let vanilla = s.create_instance(new("V"), |_| false).unwrap();
+    assert_eq!(vanilla.game_dir, None);
+    let p = InstancePatch {
+        loader_version: Some("0.17.2".into()),
+        ..Default::default()
+    };
+    assert!(
+        s.update_instance(&vanilla.id, p).is_err(),
+        "vanilla has no loader version"
+    );
+
+    let mut nf = new("N");
+    nf.loader = Loader::Neoforge;
+    nf.loader_version = Some("21.1.200".into());
+    let nf = s.create_instance(nf, |_| false).unwrap();
+    let p = InstancePatch {
+        loader_version: Some("21.1.265".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        s.update_instance(&nf.id, p)
+            .unwrap()
+            .loader_version
+            .as_deref(),
+        Some("21.1.265")
+    );
+
+    let p = InstancePatch {
+        game_dir: Some(Some(r"D:\Games\N".into())),
+        ..Default::default()
+    };
+    assert_eq!(
+        s.update_instance(&nf.id, p).unwrap().game_dir.as_deref(),
+        Some(r"D:\Games\N")
+    );
+    let p = InstancePatch {
+        game_dir: Some(None),
+        ..Default::default()
+    };
+    assert_eq!(s.update_instance(&nf.id, p).unwrap().game_dir, None);
 }

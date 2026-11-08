@@ -26,6 +26,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "accounts",
         sql: include_str!("../migrations/0003_accounts.sql"),
     },
+    Migration {
+        version: 4,
+        name: "instance_game_dir",
+        sql: include_str!("../migrations/0004_instance_game_dir.sql"),
+    },
 ];
 
 pub fn user_version(conn: &Connection) -> Result<u32> {

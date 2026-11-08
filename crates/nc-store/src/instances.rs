@@ -45,6 +45,8 @@ pub struct Instance {
     pub created_at: i64,
     pub last_played_at: Option<i64>,
     pub play_time_seconds: i64,
+    /// Custom game directory; `None` = `<data>/instances/<dir_name>`.
+    pub game_dir: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -67,9 +69,13 @@ pub struct InstancePatch {
     pub java_path: Option<Option<String>>,
     /// Already validated by the caller (`nc_core::jvmargs`).
     pub jvm_args: Option<Vec<String>>,
+    /// New loader version (same loader). Validated by the caller.
+    pub loader_version: Option<String>,
+    /// `Some(None)` returns to the default folder. Validated by the caller.
+    pub game_dir: Option<Option<String>>,
 }
 
-const COLUMNS: &str = "id, name, dir_name, game_version, loader, loader_version, max_memory_mb, java_path, jvm_args, created_at, last_played_at, play_time_seconds";
+const COLUMNS: &str = "id, name, dir_name, game_version, loader, loader_version, max_memory_mb, java_path, jvm_args, created_at, last_played_at, play_time_seconds, game_dir";
 
 fn from_row(r: &Row<'_>) -> rusqlite::Result<Instance> {
     let loader: String = r.get(4)?;
@@ -88,6 +94,7 @@ fn from_row(r: &Row<'_>) -> rusqlite::Result<Instance> {
         created_at: r.get(9)?,
         last_played_at: r.get(10)?,
         play_time_seconds: r.get(11)?,
+        game_dir: r.get(12)?,
     })
 }
 
@@ -252,6 +259,30 @@ impl Store {
             if conn.execute(
                 "UPDATE instances SET jvm_args = ?1 WHERE id = ?2",
                 params![json, id],
+            )? == 0
+            {
+                return Err(StoreError::NotFound);
+            }
+        }
+        if let Some(lv) = patch.loader_version {
+            if lv.is_empty() || lv.len() > 64 {
+                return Err(StoreError::Invalid("invalid loader version".into()));
+            }
+            if conn.execute(
+                "UPDATE instances SET loader_version = ?1 WHERE id = ?2 AND loader != 'vanilla'",
+                params![lv, id],
+            )? == 0
+            {
+                return Err(StoreError::Invalid("this instance has no loader".into()));
+            }
+        }
+        if let Some(dir) = patch.game_dir {
+            if dir.as_ref().is_some_and(|d| d.len() < 3 || d.len() > 1024) {
+                return Err(StoreError::Invalid("invalid game folder".into()));
+            }
+            if conn.execute(
+                "UPDATE instances SET game_dir = ?1 WHERE id = ?2",
+                params![dir, id],
             )? == 0
             {
                 return Err(StoreError::NotFound);
