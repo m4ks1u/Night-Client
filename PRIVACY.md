@@ -11,7 +11,7 @@ data. This page lists every connection it makes and everything it stores.
 | Xbox Live (`user.auth.xboxlive.com`, `xsts.auth.xboxlive.com`) | Signing in, renewing a session | Microsoft tokens, to obtain Xbox tokens |
 | Minecraft services (`api.minecraftservices.com`) | Signing in, checking game ownership | Xbox tokens; returns your Minecraft profile |
 | Mojang (`piston-meta.mojang.com`, `launchermeta.mojang.com`, `libraries.minecraft.net`, `resources.download.minecraft.net` and the download hosts their manifests name) | Installing or repairing versions and Java | File requests only |
-| Fabric (`meta.fabricmc.net`, `maven.fabricmc.net`) and NeoForge (`maven.neoforged.net`) | Creating or installing a modded instance | File requests only |
+| Fabric (`meta.fabricmc.net`, `maven.fabricmc.net`), Quilt (`meta.quiltmc.org`, `maven.quiltmc.org`) and NeoForge (`maven.neoforged.net`) | Creating or installing a modded instance | File requests only |
 | Modrinth (`api.modrinth.com`, `cdn.modrinth.com`) | When you browse, install or update mods, and when an instance's Mods tab finds jar files it does not know yet | Searches, project and version ids, and SHA-512 hashes of mod files (to identify them and find updates) |
 | Night Client's release feed (GitHub) | Shortly after start (can be turned off), or when you click Check now | Your Night Client version and Windows architecture |
 

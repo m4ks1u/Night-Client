@@ -10,6 +10,7 @@ use crate::{CoreError, paths::validate_segment};
 pub enum LoaderKind {
     Vanilla,
     Fabric,
+    Quilt,
     #[serde(rename = "neoforge")]
     NeoForge,
 }
@@ -19,6 +20,7 @@ impl LoaderKind {
         match self {
             Self::Vanilla => "vanilla",
             Self::Fabric => "fabric",
+            Self::Quilt => "quilt",
             Self::NeoForge => "neoforge",
         }
     }
@@ -27,13 +29,25 @@ impl LoaderKind {
         match s {
             "vanilla" => Some(Self::Vanilla),
             "fabric" => Some(Self::Fabric),
+            "quilt" => Some(Self::Quilt),
             "neoforge" => Some(Self::NeoForge),
             _ => None,
         }
     }
 }
 
-/// What to install: `vanilla:<mc>`, `fabric:<mc>:<loader>`, `neoforge:<mc>:<neoforge>`.
+/// Modrinth loader names whose mods run on `loader` (a Modrinth/loader name
+/// such as `quilt`), the instance's own first. Quilt runs Fabric mods.
+pub fn mod_loaders(loader: &str) -> &'static [&'static str] {
+    match loader {
+        "fabric" => &["fabric"],
+        "quilt" => &["quilt", "fabric"],
+        "neoforge" => &["neoforge"],
+        _ => &[],
+    }
+}
+
+/// What to install: `vanilla:<mc>`, `fabric:<mc>:<loader>`, `quilt:<mc>:<loader>`, `neoforge:<mc>:<neoforge>`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InstallKey {
     pub kind: LoaderKind,
@@ -104,6 +118,7 @@ impl InstallKey {
     pub fn launch_id(&self) -> String {
         match (&self.kind, &self.loader_version) {
             (LoaderKind::Fabric, Some(v)) => format!("fabric-loader-{v}-{}", self.minecraft),
+            (LoaderKind::Quilt, Some(v)) => format!("quilt-loader-{v}-{}", self.minecraft),
             (LoaderKind::NeoForge, Some(v)) => format!("neoforge-{v}"),
             _ => self.minecraft.clone(),
         }
@@ -113,6 +128,7 @@ impl InstallKey {
     pub fn label(&self) -> String {
         match (&self.kind, &self.loader_version) {
             (LoaderKind::Fabric, Some(v)) => format!("Fabric {v} · {}", self.minecraft),
+            (LoaderKind::Quilt, Some(v)) => format!("Quilt {v} · {}", self.minecraft),
             (LoaderKind::NeoForge, Some(v)) => format!("NeoForge {v} · {}", self.minecraft),
             _ => format!("Minecraft {}", self.minecraft),
         }
@@ -201,6 +217,7 @@ mod tests {
             ("vanilla:1.21.1", "1.21.1"),
             ("fabric:1.21.1:0.17.2", "fabric-loader-0.17.2-1.21.1"),
             ("neoforge:1.21.1:21.1.265", "neoforge-21.1.265"),
+            ("quilt:1.21.1:0.29.2", "quilt-loader-0.29.2-1.21.1"),
             (
                 "fabric:1.12.2:0.14.0+build.1",
                 "fabric-loader-0.14.0+build.1-1.12.2",
@@ -215,12 +232,20 @@ mod tests {
             "forge:1.20.1:47",
             "vanilla:1.21.1:x",
             "fabric:1.21.1",
+            "quilt:1.21.1",
             "fabric:../x:0.1",
             "neoforge:1.21.1:21/..",
             "vanilla:",
         ] {
             assert!(InstallKey::parse(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn quilt_runs_fabric_mods_but_not_the_reverse() {
+        assert_eq!(mod_loaders("quilt"), ["quilt", "fabric"]);
+        assert_eq!(mod_loaders("fabric"), ["fabric"]);
+        assert!(mod_loaders("vanilla").is_empty() && mod_loaders("forge").is_empty());
     }
 
     #[test]

@@ -13,7 +13,7 @@ use crate::state::{AppState, lock};
 pub struct InstanceView {
     #[serde(flatten)]
     instance: Instance,
-    /// `vanilla:<mc>` / `fabric:<mc>:<v>` / `neoforge:<mc>:<v>`: the download-queue key.
+    /// `vanilla:<mc>` / `fabric:<mc>:<v>` / `quilt:<mc>:<v>` / `neoforge:<mc>:<v>`: the download-queue key.
     install_key: Option<String>,
     /// Human label, e.g. "Fabric 0.17.2 · 1.21.1".
     label: String,
@@ -25,6 +25,7 @@ fn to_kind(l: Loader) -> LoaderKind {
     match l {
         Loader::Vanilla => LoaderKind::Vanilla,
         Loader::Fabric => LoaderKind::Fabric,
+        Loader::Quilt => LoaderKind::Quilt,
         Loader::Neoforge => LoaderKind::NeoForge,
     }
 }
@@ -33,6 +34,7 @@ fn from_kind(k: LoaderKind) -> Loader {
     match k {
         LoaderKind::Vanilla => Loader::Vanilla,
         LoaderKind::Fabric => Loader::Fabric,
+        LoaderKind::Quilt => Loader::Quilt,
         LoaderKind::NeoForge => Loader::Neoforge,
     }
 }

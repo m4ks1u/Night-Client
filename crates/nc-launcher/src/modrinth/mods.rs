@@ -249,7 +249,8 @@ fn plausible_mod_id(id: &str) -> bool {
 
 /// Copy a user-chosen jar into the mods folder after validation:
 /// `.jar`, ≤ 256 MiB, a readable zip, and not declared for a different
-/// loader (`instance_loader` is `fabric`/`neoforge`).
+/// loader (`instance_loader` is `fabric`, `quilt` or `neoforge`; Quilt
+/// also accepts Fabric jars).
 pub fn import_local(
     dir: &Path,
     src: &Path,
@@ -272,7 +273,7 @@ pub fn import_local(
     }
     let info = inspect_jar(src)?;
     if let Some(l) = &info.loader
-        && l != instance_loader
+        && !nc_core::loader::mod_loaders(instance_loader).contains(&l.as_str())
     {
         return Err(LauncherError::InvalidPath(format!(
             "{name} is a {l} mod; this instance uses {instance_loader}"
@@ -401,6 +402,16 @@ mod tests {
         assert!(
             import_local(&mods, &fabric, "neoforge").is_err(),
             "wrong loader refused"
+        );
+        let qmods = d.path().join("qmods");
+        assert!(
+            import_local(&qmods, &fabric, "quilt").is_ok(),
+            "Quilt runs Fabric mods"
+        );
+        let quilt = jar(d.path(), "q.jar", &[("quilt.mod.json", "{}")]);
+        assert!(
+            import_local(&mods, &quilt, "fabric").is_err(),
+            "Fabric does not run Quilt mods"
         );
         let unknown = jar(d.path(), "plain.jar", &[]);
         assert!(

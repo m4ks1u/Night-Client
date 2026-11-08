@@ -1,14 +1,38 @@
-//! Fabric: a version JSON from Fabric Meta that inherits from vanilla.
+//! Fabric and Quilt: a version JSON from Fabric Meta or Quilt Meta that
+//! inherits from vanilla. Both services publish the same profile format.
 //!
-//! Fabric Meta omits hashes for `fabric-loader` and `intermediary`, so their
-//! SHA-1 is taken from the Maven `.sha1` sidecar next to each jar (same
-//! HTTPS origin) before download.
+//! The profiles omit library hashes, so each SHA-1 is taken from the Maven
+//! `.sha1` sidecar next to each jar (same HTTPS origin) before download.
 
 use nc_core::{libraries, loader::InstallKey, manifest::VersionJson, rules::Environment};
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use super::LoaderVersion;
+/// Which Fabric-style meta service a profile comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Flavor {
+    Fabric,
+    Quilt,
+}
+
+impl Flavor {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Fabric => "Fabric",
+            Self::Quilt => "Quilt",
+        }
+    }
+
+    /// `<meta base>/v<n>/versions/loader`
+    fn loader_url(self, meta: &Meta) -> String {
+        match self {
+            Self::Fabric => format!("{}/v2/versions/loader", meta.fabric_meta_url),
+            Self::Quilt => format!("{}/v3/versions/loader", meta.quilt_meta_url),
+        }
+    }
+}
+
 use crate::{
     LauncherError,
     download::{DownloadTask, Progress},
@@ -28,31 +52,36 @@ struct LoaderInfo {
 }
 
 pub async fn versions(
+    flavor: Flavor,
     meta: &Meta,
     minecraft: &str,
     cancel: &CancellationToken,
 ) -> Result<Vec<LoaderVersion>, LauncherError> {
     nc_core::paths::validate_segment(minecraft)?;
-    let url = format!("{}/v2/versions/loader/{minecraft}", meta.fabric_meta_url);
+    let url = format!("{}/{minecraft}", flavor.loader_url(meta));
     let bytes = match meta.dl.get_bytes(&url, cancel).await {
         Ok(b) => b,
-        // Fabric Meta answers 400 for versions it does not support.
+        // Fabric Meta answers 400, Quilt Meta 404, for unsupported versions.
         Err(crate::download::DownloadError::Http {
             status: 400 | 404, ..
         }) => return Ok(Vec::new()),
         Err(e) => return Err(e.into()),
     };
-    let list: Vec<Entry> =
-        serde_json::from_slice(&bytes).map_err(LauncherError::parse("Fabric loader list"))?;
+    let list: Vec<Entry> = serde_json::from_slice(&bytes).map_err(LauncherError::parse(
+        format!("{} loader list", flavor.name()),
+    ))?;
     // Fabric Meta flags only the newest loader as `stable`; older releases are
     // still releases. Pre-releases carry a SemVer suffix (0.17.0-beta.1).
-    Ok(list
+    // Quilt Meta returns its list unordered, so both are sorted newest first.
+    let mut out: Vec<LoaderVersion> = list
         .into_iter()
         .map(|e| LoaderVersion {
             stable: !e.loader.version.contains('-'),
             version: e.loader.version,
         })
-        .collect())
+        .collect();
+    out.sort_by(|a, b| nc_core::loader::version_cmp(&b.version, &a.version));
+    Ok(out)
 }
 
 fn is_sha1(s: &str) -> bool {
@@ -60,6 +89,7 @@ fn is_sha1(s: &str) -> bool {
 }
 
 pub async fn install(
+    flavor: Flavor,
     meta: &Meta,
     key: &InstallKey,
     env: &Environment,
@@ -91,15 +121,16 @@ pub async fn install(
     let was_installed = super::begin(layout, &id).await?;
 
     let url = format!(
-        "{}/v2/versions/loader/{}/{lv}/profile/json",
-        meta.fabric_meta_url, key.minecraft
+        "{}/{}/{lv}/profile/json",
+        flavor.loader_url(meta),
+        key.minecraft
     );
     let json = meta.dl.get_bytes(&url, cancel).await?;
-    let child: VersionJson =
-        serde_json::from_slice(&json).map_err(LauncherError::parse("Fabric profile"))?;
+    let child: VersionJson = serde_json::from_slice(&json)
+        .map_err(LauncherError::parse(format!("{} profile", flavor.name())))?;
     if child.id != id || child.inherits_from.as_deref() != Some(key.minecraft.as_str()) {
         return Err(LauncherError::Parse {
-            what: "Fabric profile".into(),
+            what: format!("{} profile", flavor.name()),
             message: format!(
                 "unexpected id {} / parent {:?}",
                 child.id, child.inherits_from
@@ -156,7 +187,7 @@ pub async fn install(
     if was_installed {
         repaired.extend(super::relative(layout.root(), &files.fetched));
     }
-    tracing::info!(%id, libraries = files.downloaded_files, "Fabric installed");
+    tracing::info!(%id, loader = flavor.name(), libraries = files.downloaded_files, "loader installed");
     Ok(Installed {
         version: merged,
         libraries: libs,

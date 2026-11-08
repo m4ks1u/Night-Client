@@ -57,7 +57,7 @@ export type Instance = {
   installed: boolean;
   running: boolean;
 };
-export type LoaderKind = "vanilla" | "fabric" | "neoforge";
+export type LoaderKind = "vanilla" | "fabric" | "quilt" | "neoforge";
 export type LoaderVersion = { version: string; stable: boolean };
 export type SortIndex = "relevance" | "downloads" | "follows" | "newest" | "updated";
 export type SearchHit = {

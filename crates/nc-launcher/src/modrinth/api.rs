@@ -147,8 +147,11 @@ impl Version {
             .or_else(|| self.files.first())
     }
 
+    /// Runs on an instance of `loader` for `minecraft`. Quilt instances also
+    /// run Fabric mods (see `nc_core::loader::mod_loaders`).
     pub fn supports(&self, loader: &str, minecraft: &str) -> bool {
-        self.loaders.iter().any(|l| l == loader)
+        let ok = nc_core::loader::mod_loaders(loader);
+        self.loaders.iter().any(|l| ok.contains(&l.as_str()))
             && self.game_versions.iter().any(|g| g == minecraft)
     }
 }
@@ -434,7 +437,11 @@ impl Modrinth {
         } = *q;
         let mut facets = vec![
             vec!["project_type:mod".to_owned()],
-            vec![format!("categories:{loader}")],
+            // One OR group: a Quilt instance lists Quilt and Fabric mods.
+            nc_core::loader::mod_loaders(loader)
+                .iter()
+                .map(|l| format!("categories:{l}"))
+                .collect(),
             vec![format!("versions:{minecraft}")],
             // Hide server-only mods: they do nothing in a client instance.
             vec![
@@ -494,8 +501,8 @@ impl Modrinth {
         if !valid_id(project) {
             return Err(ModrinthError::NotFound);
         }
-        let loaders =
-            serde_json::to_string(&[loader]).map_err(|e| ModrinthError::Parse(e.to_string()))?;
+        let loaders = serde_json::to_string(nc_core::loader::mod_loaders(loader))
+            .map_err(|e| ModrinthError::Parse(e.to_string()))?;
         let games =
             serde_json::to_string(&[minecraft]).map_err(|e| ModrinthError::Parse(e.to_string()))?;
         let mut u = url::Url::parse(&format!("{}/project/{project}/version", self.base))
@@ -535,7 +542,7 @@ impl Modrinth {
         if sha512.is_empty() {
             return Ok(HashMap::new());
         }
-        let body = serde_json::json!({ "hashes": sha512, "algorithm": "sha512", "loaders": [loader], "game_versions": [minecraft] });
+        let body = serde_json::json!({ "hashes": sha512, "algorithm": "sha512", "loaders": nc_core::loader::mod_loaders(loader), "game_versions": [minecraft] });
         self.post("/version_files/update", &body, cancel).await
     }
 

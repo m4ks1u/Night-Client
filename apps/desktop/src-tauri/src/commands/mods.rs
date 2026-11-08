@@ -28,11 +28,12 @@ async fn ctx(state: &AppState, id: &str) -> Result<(Instance, &'static str, Path
     let inst = with_db(state, move |db| db.get_instance(&lookup)).await?;
     let loader = match inst.loader {
         Loader::Fabric => "fabric",
+        Loader::Quilt => "quilt",
         Loader::Neoforge => "neoforge",
         Loader::Vanilla => {
             return Err(CmdError::new(
                 "no_loader",
-                "Vanilla instances can't use mods. Create a Fabric or NeoForge instance.",
+                "Vanilla instances can't use mods. Create a Fabric, Quilt or NeoForge instance.",
             ));
         }
     };

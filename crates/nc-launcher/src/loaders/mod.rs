@@ -1,4 +1,4 @@
-//! Mod loaders on top of vanilla: Fabric (profile merge) and NeoForge
+//! Mod loaders on top of vanilla: Fabric and Quilt (profile merge) and NeoForge
 //! (installer processors). Every loader install first installs (or
 //! verifies) its vanilla parent, then writes `versions/<launch id>/` with:
 //!
@@ -47,7 +47,12 @@ pub async fn install(
         LoaderKind::Vanilla => {
             install::install_vanilla(meta, &key.minecraft, env, cancel, on_progress).await
         }
-        LoaderKind::Fabric => fabric::install(meta, key, env, cancel, on_progress).await,
+        LoaderKind::Fabric => {
+            fabric::install(fabric::Flavor::Fabric, meta, key, env, cancel, on_progress).await
+        }
+        LoaderKind::Quilt => {
+            fabric::install(fabric::Flavor::Quilt, meta, key, env, cancel, on_progress).await
+        }
         LoaderKind::NeoForge => neoforge::install(meta, key, env, cancel, on_progress).await,
     }
 }
@@ -61,7 +66,10 @@ pub async fn versions(
 ) -> Result<Vec<LoaderVersion>, LauncherError> {
     match kind {
         LoaderKind::Vanilla => Ok(Vec::new()),
-        LoaderKind::Fabric => fabric::versions(meta, minecraft, cancel).await,
+        LoaderKind::Fabric => {
+            fabric::versions(fabric::Flavor::Fabric, meta, minecraft, cancel).await
+        }
+        LoaderKind::Quilt => fabric::versions(fabric::Flavor::Quilt, meta, minecraft, cancel).await,
         LoaderKind::NeoForge => neoforge::versions(meta, minecraft, cancel).await,
     }
 }

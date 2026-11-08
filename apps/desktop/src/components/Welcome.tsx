@@ -78,7 +78,7 @@ export function Welcome() {
         <div className="mt-4 text-[13px] leading-relaxed text-fg-muted">
           {step === 0 && (
             <Body icon={<Moon size={18} />}>
-              <p>A fast, open-source launcher for Minecraft: Java Edition, with Fabric and NeoForge instances and mods from Modrinth.</p>
+              <p>A fast, open-source launcher for Minecraft: Java Edition, with Fabric, Quilt and NeoForge instances and mods from Modrinth.</p>
               <p className="mt-2">
                 To play you need a Microsoft account that owns Minecraft: Java Edition. Night Client is not an official Minecraft product and
                 is not associated with Mojang Studios or Microsoft.
@@ -97,7 +97,7 @@ export function Welcome() {
               <p>Night Client has no analytics or telemetry. It connects to:</p>
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 <li>Microsoft and Xbox Live, to sign you in. Your password is entered on Microsoft's page, never in Night Client.</li>
-                <li>Mojang, Fabric and NeoForge, to download game files, which are verified before use.</li>
+                <li>Mojang, Fabric, Quilt and NeoForge, to download game files, which are verified before use.</li>
                 <li>Modrinth, when you browse, install or update mods, or add mod files it should identify.</li>
               </ul>
               <p className="mt-2">Crash reports stay on this PC unless you export them from Diagnostics.</p>

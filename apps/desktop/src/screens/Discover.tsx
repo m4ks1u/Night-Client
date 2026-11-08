@@ -65,11 +65,11 @@ export function Discover({ instanceId }: { instanceId?: string }) {
   if (instances.status === "ready" && modded.length === 0) {
     return (
       <div>
-        <PageHeader title="Discover mods" subtitle="Browse Modrinth for Fabric and NeoForge mods." />
+        <PageHeader title="Discover mods" subtitle="Browse Modrinth for Fabric, Quilt and NeoForge mods." />
         <EmptyState
           icon={<Compass size={20} />}
           title="Create a modded instance first"
-          body="Mods need a mod loader. Create an instance with Fabric or NeoForge, then come back here."
+          body="Mods need a mod loader. Create an instance with Fabric, Quilt or NeoForge, then come back here."
           action={
             <Button variant="primary" icon={<Plus size={15} />} onClick={() => navigate({ name: "new-instance" })}>
               New instance

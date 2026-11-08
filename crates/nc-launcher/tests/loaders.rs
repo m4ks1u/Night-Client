@@ -1,7 +1,8 @@
-//! Real-network loader installs (Fabric, NeoForge). Ignored by default.
+//! Real-network loader installs (Fabric, Quilt, NeoForge). Ignored by default.
 //!
 //! ```text
 //! cargo test --release -p nc-launcher --test loaders -- --ignored --nocapture
+//! NC_LOADERS=quilt cargo test ...   # only some loaders (comma-separated)
 //! ```
 //!
 //! Installs the newest stable loader for each case, prepares the launch
@@ -52,9 +53,16 @@ async fn loader_matrix() {
     for (kind, mc) in [
         (LoaderKind::Fabric, "1.21.1"),
         (LoaderKind::Fabric, "26.3"),
+        (LoaderKind::Quilt, "1.21.1"),
+        (LoaderKind::Quilt, "26.3"),
         (LoaderKind::NeoForge, "1.21.1"),
         (LoaderKind::NeoForge, "26.3"),
     ] {
+        if let Ok(only) = std::env::var("NC_LOADERS")
+            && !only.split(',').any(|k| k.trim() == kind.as_str())
+        {
+            continue;
+        }
         let versions = loaders::versions(&meta, kind, mc, &cancel).await.unwrap();
         let Some(lv) = versions.iter().find(|v| v.stable).or(versions.first()) else {
             report.push(format!(

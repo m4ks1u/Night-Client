@@ -26,6 +26,7 @@ function rng(seed: number) {
 const TINT: Record<LoaderKind, string> = {
   vanilla: "var(--color-info)",
   fabric: "var(--color-warning)",
+  quilt: "var(--color-success)",
   neoforge: "var(--color-accent)",
 };
 
