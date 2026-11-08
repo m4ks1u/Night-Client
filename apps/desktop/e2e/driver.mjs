@@ -12,8 +12,17 @@ const ERROR_HOOK = `(window.__err=JSON.parse(sessionStorage.getItem("__err")||"[
   window.addEventListener("error",e=>{window.__err.push(String(e.message));sessionStorage.setItem("__err",JSON.stringify(window.__err))}),
   window.addEventListener("unhandledrejection",e=>{window.__err.push(String(e.reason?.message??JSON.stringify(e.reason)));sessionStorage.setItem("__err",JSON.stringify(window.__err))}),true)`;
 
-export async function launch(exe, { port = 9350, outDir = "." } = {}) {
-  const app = spawn(exe, [], { env: { ...process.env, NIGHT_CLIENT_DEVTOOLS_PORT: String(port) }, stdio: "ignore" });
+/**
+ * Start the app and attach to it. `env` adds environment variables (for
+ * example APPDATA/LOCALAPPDATA pointing at a throwaway folder).
+ */
+export async function launch(exe, { port = 9350, outDir = ".", env = {} } = {}) {
+  const app = spawn(exe, [], { env: { ...process.env, ...env, NIGHT_CLIENT_DEVTOOLS_PORT: String(port) }, stdio: "ignore" });
+  return connect(port, { outDir, app });
+}
+
+/** Attach to an app that is already running with a DevTools port (e.g. after it restarted itself). */
+export async function connect(port, { outDir = ".", app = null } = {}) {
   let target;
   for (let i = 0; i < 80 && !target; i++) {
     await sleep(250);
@@ -89,7 +98,9 @@ export async function launch(exe, { port = 9350, outDir = "." } = {}) {
       await sleep(2500);
       await js(ERROR_HOOK);
     },
-    close: () => app.kill(),
+    close: () => { app?.kill(); ws.close(); },
+    /** Stop talking to the app without stopping it. */
+    detach: () => ws.close(),
   };
   await sleep(2000);
   // Key events need a focused page even when the window is in the background.
@@ -97,7 +108,7 @@ export async function launch(exe, { port = 9350, outDir = "." } = {}) {
   try {
     await d.hookErrors();
   } catch (e) {
-    app.kill();
+    app?.kill();
     // Debug builds load the UI from the Vite dev server; without it WebView2 shows an error page.
     throw new Error(`the app page did not load. Is the Vite dev server running (pnpm dev)? ${e.message.slice(0, 120)}`);
   }
