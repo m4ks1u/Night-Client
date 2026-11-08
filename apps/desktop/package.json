@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "3.14.26",
     "@tauri-apps/api": "2.12.4",
     "geist": "1.9.2",
     "lucide-react": "1.70.0",
@@ -27,6 +28,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
+    "axe-core": "4.14.0",
     "jsdom": "^31.0.0",
     "tailwindcss": "4.3.5",
     "typescript": "7.0.2",

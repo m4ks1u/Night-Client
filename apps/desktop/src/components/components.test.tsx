@@ -139,7 +139,7 @@ describe("app store", () => {
   });
 
   it("uses the instance override or the launcher default for memory", () => {
-    const s = { defaultMaxMemoryMb: 6144, downloadConcurrency: 8, hideOnLaunch: false };
+    const s = { defaultMaxMemoryMb: 6144, downloadConcurrency: 8, hideOnLaunch: false, reduceMotion: false };
     expect(effectiveMemory(inst(), s)).toBe(6144);
     expect(effectiveMemory(inst({ maxMemoryMb: 2048 }), s)).toBe(2048);
     expect(effectiveMemory(inst(), null)).toBe(4096);
@@ -173,5 +173,66 @@ describe("labelForKey", () => {
     expect(labelForKey("fabric:1.21.1:0.17.2")).toBe("Fabric 0.17.2 · 1.21.1");
     expect(labelForKey("neoforge:26.3:26.3.0.101")).toBe("NeoForge 26.3.0.101 · 26.3");
     expect(labelForKey("1.12.2")).toBe("Minecraft 1.12.2");
+  });
+});
+
+import { matches } from "./CommandPalette";
+import { hash32 } from "./InstanceArt";
+import { MAX_TOASTS, useToasts } from "../stores/toast";
+import { Toaster } from "./Toaster";
+import { LazyMotion, domAnimation } from "motion/react";
+
+describe("command palette matching", () => {
+  it("matches word starts in any order", () => {
+    expect(matches("dis", "Discover mods Go to modrinth search")).toBe(true);
+    expect(matches("play surv", "Play Survival World Fabric 0.20.1 · 1.21.1")).toBe(true);
+    expect(matches("1.21", "Play Survival Fabric 0.20.1 · 1.21.1")).toBe(true);
+    expect(matches("over", "Discover mods")).toBe(false);
+    expect(matches("", "anything")).toBe(true);
+  });
+});
+
+describe("instance art", () => {
+  it("is deterministic per instance and differs between instances", () => {
+    expect(hash32("a")).toBe(hash32("a"));
+    expect(hash32("3f2b8c1e-0000")).not.toBe(hash32("3f2b8c1e-0001"));
+  });
+});
+
+describe("toasts", () => {
+  beforeEach(() => useToasts.setState({ toasts: [] }));
+
+  it("keeps at most MAX_TOASTS and dismisses by id", () => {
+    for (let i = 0; i < MAX_TOASTS + 2; i++) useToasts.getState().push({ tone: "info", title: `t${i}` });
+    const t = useToasts.getState().toasts;
+    expect(t).toHaveLength(MAX_TOASTS);
+    expect(t[0]?.title).toBe("t2");
+    useToasts.getState().dismiss(t[0]!.id);
+    expect(useToasts.getState().toasts).toHaveLength(MAX_TOASTS - 1);
+  });
+
+  it("renders errors as alerts with an action that navigates and dismisses", () => {
+    useRouter.setState({ route: { name: "home" }, history: [] });
+    useToasts.getState().push({ tone: "error", title: "Install failed", body: "network", action: { label: "View downloads", route: { name: "downloads" } } });
+    render(
+      <LazyMotion features={domAnimation}>
+        <Toaster />
+      </LazyMotion>,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("Install failed");
+    fireEvent.click(screen.getByRole("button", { name: "View downloads" }));
+    expect(useRouter.getState().route).toEqual({ name: "downloads" });
+    expect(useToasts.getState().toasts).toHaveLength(0);
+  });
+});
+
+import { CommandPalette } from "./CommandPalette";
+
+describe("command palette render", () => {
+  it("renders while instances are still loading (regression: React #185 update loop)", () => {
+    useApp.setState({ instances: { status: "idle" } });
+    expect(() => render(<CommandPalette open={false} onClose={() => {}} />)).not.toThrow();
+    useApp.setState({ instances: { status: "loading" } });
+    useApp.setState({ instances: { status: "ready", data: [] } });
   });
 });

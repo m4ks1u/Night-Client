@@ -15,7 +15,7 @@ export function Settings() {
   const [error, setError] = useState<CmdError | null>(null);
   const [saved, setSaved] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const ids = { conc: useId(), hide: useId() };
+  const ids = { conc: useId(), hide: useId(), motion: useId() };
 
   useEffect(() => {
     if (settings && !draft) setDraft(settings);
@@ -74,6 +74,16 @@ export function Settings() {
             </div>
           </Card>
 
+          <Card title="Appearance">
+            <Toggle
+              id={ids.motion}
+              checked={draft.reduceMotion}
+              onChange={(v) => update({ ...draft, reduceMotion: v })}
+              label="Reduce motion"
+              description="Night Client already follows Windows' animation setting. This turns animations off regardless."
+            />
+          </Card>
+
           <JavaList />
 
           <Card title="Downloads">
@@ -106,6 +116,25 @@ export function Settings() {
                 Open
               </Button>
             </div>
+          </Card>
+
+          <Card title="Keyboard shortcuts">
+            <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-2 text-[13px]">
+              {[
+                ["Search and commands", "Ctrl K"],
+                ["New instance", "Ctrl N"],
+                ["Settings", "Ctrl ,"],
+                ["Focus the search box", "Ctrl F"],
+                ["Back", "Alt ←"],
+              ].map(([what, keys]) => (
+                <div key={what} className="contents">
+                  <dt className="text-fg-muted">{what}</dt>
+                  <dd>
+                    <kbd className="rounded border border-line bg-surface-2 px-1.5 py-0.5 text-xs text-fg">{keys}</kbd>
+                  </dd>
+                </div>
+              ))}
+            </dl>
           </Card>
 
           <Card title="About">

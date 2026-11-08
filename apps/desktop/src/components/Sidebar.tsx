@@ -1,4 +1,4 @@
-import { Activity, Boxes, Compass, Download, House, Settings, UserRound } from "lucide-react";
+import { Activity, Boxes, Compass, Download, House, Search, Settings, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { navigate, sectionOf, useRouter, type Route } from "../stores/router";
 import { useApp } from "../stores/app";
@@ -17,7 +17,7 @@ const secondary: Item[] = [
   { route: { name: "diagnostics" }, label: "Diagnostics", icon: <Activity size={17} strokeWidth={1.75} /> },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onOpenPalette }: { onOpenPalette: () => void }) {
   const section = useRouter((s) => sectionOf(s.route));
   const account = useApp((s) => s.account);
   const runningCount = useApp((s) => Object.keys(s.running).length);
@@ -25,6 +25,16 @@ export function Sidebar() {
 
   return (
     <nav aria-label="Main" className="flex w-[216px] shrink-0 flex-col border-r border-line bg-surface-1 px-3 py-4">
+      <button
+        type="button"
+        onClick={onOpenPalette}
+        aria-keyshortcuts="Control+K"
+        className="mb-3 flex h-8 items-center gap-2 rounded-md border border-line bg-surface-2 px-2.5 text-[13px] text-fg-faint transition-colors duration-(--duration-fast) hover:border-line-strong hover:text-fg-muted"
+      >
+        <Search size={14} />
+        Search
+        <kbd className="ml-auto rounded border border-line px-1 font-sans text-2xs">Ctrl K</kbd>
+      </button>
       <ul className="flex flex-col gap-0.5">
         {main.map((i) => (
           <NavItem key={i.label} item={i} active={section === i.route.name}>
