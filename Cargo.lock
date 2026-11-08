@@ -2412,6 +2412,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "url",
+ "windows-registry",
  "wiremock",
  "zeroize",
  "zip",

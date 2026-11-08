@@ -26,6 +26,8 @@ pub enum JavaSource {
     JavaHome,
     Path,
     ProgramFiles,
+    /// Recorded in the Windows registry by a vendor installer.
+    Registry,
     /// Bundled with the official Minecraft Launcher.
     MinecraftLauncher,
     /// Chosen by the user.
@@ -208,6 +210,13 @@ pub fn detect(layout: &Layout) -> Vec<JavaRuntime> {
                 push_all(&Path::new(&pf).join(vendor), 2, JavaSource::ProgramFiles);
             }
         }
+    }
+    // Installs outside the standard folders (custom location, other drive).
+    // Earlier sources win the de-duplication below, so a runtime already
+    // found under Program Files keeps that label.
+    #[cfg(windows)]
+    for home in crate::javareg::homes(crate::javareg::VENDOR_ROOTS) {
+        push_all(&home, 0, JavaSource::Registry);
     }
     if let Some(local) = std::env::var_os("LOCALAPPDATA") {
         let store = Path::new(&local)

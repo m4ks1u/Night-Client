@@ -17,6 +17,7 @@ const SOURCE: Record<JavaRuntime["source"], string> = {
   javaHome: "JAVA_HOME",
   path: "PATH",
   programFiles: "Installed",
+  registry: "Installed",
   minecraftLauncher: "Minecraft Launcher",
   custom: "Custom",
 };

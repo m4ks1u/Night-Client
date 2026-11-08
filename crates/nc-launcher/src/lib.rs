@@ -14,6 +14,8 @@ pub mod install;
 pub mod instance;
 pub mod java;
 pub mod javadetect;
+#[cfg(windows)]
+pub mod javareg;
 pub mod layout;
 pub mod loaders;
 pub mod logging;
