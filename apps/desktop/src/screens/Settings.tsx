@@ -4,6 +4,7 @@ import { Button } from "../components/Button";
 import { Card, Field, InlineError, MemorySlider, PageHeader, Skeleton, Toggle, inputClass } from "../components/ui";
 import { api, toCmdError, type CmdError, type Settings as SettingsT } from "../lib/ipc";
 import { useApp } from "../stores/app";
+import { JavaList } from "../components/JavaPicker";
 
 export function Settings() {
   const settings = useApp((s) => s.settings);
@@ -72,6 +73,8 @@ export function Settings() {
               />
             </div>
           </Card>
+
+          <JavaList />
 
           <Card title="Downloads">
             <Field label="Parallel downloads" htmlFor={ids.conc} hint="Lower this on slow or shared connections. Applies to the next download.">

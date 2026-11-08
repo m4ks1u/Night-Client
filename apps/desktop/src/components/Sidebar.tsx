@@ -1,4 +1,4 @@
-import { Activity, Boxes, House, Settings, UserRound } from "lucide-react";
+import { Activity, Boxes, Download, House, Settings, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { navigate, sectionOf, useRouter, type Route } from "../stores/router";
 import { useApp } from "../stores/app";
@@ -8,6 +8,7 @@ type Item = { route: Route; label: string; icon: ReactNode };
 const main: Item[] = [
   { route: { name: "home" }, label: "Home", icon: <House size={17} strokeWidth={1.75} /> },
   { route: { name: "instances" }, label: "Instances", icon: <Boxes size={17} strokeWidth={1.75} /> },
+  { route: { name: "downloads" }, label: "Downloads", icon: <Download size={17} strokeWidth={1.75} /> },
 ];
 
 const secondary: Item[] = [
@@ -19,13 +20,18 @@ export function Sidebar() {
   const section = useRouter((s) => sectionOf(s.route));
   const account = useApp((s) => s.account);
   const runningCount = useApp((s) => Object.keys(s.running).length);
-  const installing = useApp((s) => s.install?.versionId);
+  const downloads = useApp((s) => (s.queue.active ? 1 : 0) + s.queue.pending.length);
 
   return (
     <nav aria-label="Main" className="flex w-[216px] shrink-0 flex-col border-r border-line bg-surface-1 px-3 py-4">
       <ul className="flex flex-col gap-0.5">
         {main.map((i) => (
           <NavItem key={i.label} item={i} active={section === i.route.name}>
+            {i.route.name === "downloads" && downloads > 0 && (
+              <span className="ml-auto grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-2xs font-semibold text-accent-fg" aria-label={`${downloads} active`}>
+                {downloads}
+              </span>
+            )}
             {i.route.name === "instances" && runningCount > 0 && (
               <span className="ml-auto flex items-center gap-1.5 text-2xs text-success">
                 <span className="size-1.5 rounded-full bg-success" aria-hidden="true" />
@@ -36,11 +42,6 @@ export function Sidebar() {
         ))}
       </ul>
 
-      {installing && (
-        <p className="mx-2.5 mt-4 truncate text-2xs text-fg-faint" aria-live="polite">
-          Installing {installing}…
-        </p>
-      )}
 
       <ul className="mt-auto flex flex-col gap-0.5">
         {secondary.map((i) => (

@@ -31,7 +31,6 @@ export type SystemInfo = {
 export type Settings = { defaultMaxMemoryMb: number; downloadConcurrency: number; hideOnLaunch: boolean };
 export type VersionItem = { id: string; kind: "release" | "snapshot" | string; releaseTime: string; installed: boolean };
 export type VersionList = { latestRelease: string; latestSnapshot: string; versions: VersionItem[]; fromCache: boolean };
-export type InstallResult = { downloadedFiles: number; skippedFiles: number; downloadedBytes: number };
 export type Account = { name: string; uuid: string; expiresAt: number };
 
 export type Instance = {
@@ -42,6 +41,7 @@ export type Instance = {
   loader: "vanilla" | "fabric" | "neoforge";
   loaderVersion: string | null;
   maxMemoryMb: number | null;
+  javaPath: string | null;
   createdAt: number;
   lastPlayedAt: number | null;
   playTimeSeconds: number;
@@ -69,6 +69,7 @@ export type Diagnostics = {
 
 export type InstallPhase = "metadata" | "runtime" | "gameFiles";
 export type InstallProgress = {
+  jobId: number;
   id: string;
   phase: InstallPhase;
   totalFiles: number;
@@ -77,7 +78,44 @@ export type InstallProgress = {
   totalBytes: number;
   doneBytes: number;
 };
-export type InstallFinished = { id: string; ok: boolean; error: string | null };
+export type DownloadStatus = "completed" | "failed" | "cancelled";
+export type InstallFinished = {
+  jobId: number;
+  id: string;
+  status: DownloadStatus;
+  code: string | null;
+  error: string | null;
+  repair: boolean;
+  repairedCount: number;
+};
+export type JobView = { id: number; kind: "version"; target: string; queuedAt: number };
+export type QueueSnapshot = { active: JobView | null; pending: JobView[] };
+export type DownloadRecord = {
+  id: number;
+  kind: string;
+  target: string;
+  status: DownloadStatus;
+  repair: boolean;
+  queuedAt: number;
+  startedAt: number;
+  finishedAt: number;
+  filesDownloaded: number;
+  filesVerified: number;
+  bytesDownloaded: number;
+  repaired: string[];
+  error: string | null;
+};
+export type Compatibility = "recommended" | "compatible" | "risky" | "incompatible";
+export type JavaRuntime = {
+  path: string;
+  home: string;
+  version: string;
+  major: number;
+  vendor: string | null;
+  arch: "x64" | "x86" | "arm64" | "unknown";
+  source: "managed" | "javaHome" | "path" | "programFiles" | "minecraftLauncher" | "custom";
+  compatibility: Compatibility | null;
+};
 export type LogLine = { stream: "stdout" | "stderr"; level: string | null; text: string };
 export type LogBatch = { instanceId: string; lines: LogLine[] };
 export type GameExit = { instanceId: string; code: number | null; seconds: number };
@@ -93,9 +131,14 @@ export const api = {
   openLogsDir: () => invoke<void>("open_logs_dir"),
 
   listVersions: (includeSnapshots: boolean) => invoke<VersionList>("list_versions", { includeSnapshots }),
-  installVersion: (id: string) => invoke<InstallResult>("install_version", { id }),
-  cancelInstall: () => invoke<void>("cancel_install"),
-  currentInstall: () => invoke<string | null>("current_install"),
+  installVersion: (id: string) => invoke<number>("install_version", { id }),
+  cancelDownload: (jobId: number) => invoke<void>("cancel_download", { jobId }),
+  downloadQueue: () => invoke<QueueSnapshot>("download_queue"),
+  downloadHistory: (limit: number) => invoke<DownloadRecord[]>("download_history", { limit }),
+  clearDownloadHistory: () => invoke<number>("clear_download_history"),
+
+  detectJava: (forVersion: string | null) => invoke<JavaRuntime[]>("detect_java", { forVersion }),
+  setInstanceJava: (id: string, path: string | null) => invoke<JavaRuntime | null>("set_instance_java", { id, path }),
 
   listInstances: () => invoke<Instance[]>("list_instances"),
   getInstance: (id: string) => invoke<Instance>("get_instance", { id }),
@@ -124,6 +167,7 @@ const on =
 export const events = {
   installProgress: on<InstallProgress>("install://progress"),
   installFinished: on<InstallFinished>("install://finished"),
+  downloadsQueue: on<QueueSnapshot>("downloads://queue"),
   gameStarted: on<string>("game://started"),
   gameLog: on<LogBatch>("game://log"),
   gameExit: on<GameExit>("game://exit"),
