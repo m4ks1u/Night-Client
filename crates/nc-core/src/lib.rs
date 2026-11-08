@@ -9,6 +9,7 @@
 
 pub mod error;
 pub mod java;
+pub mod jvmargs;
 pub mod launch;
 pub mod libraries;
 pub mod manifest;
