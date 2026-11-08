@@ -62,7 +62,8 @@ const COMMANDS: &[&str] = &[
 ];
 
 fn main() {
-    // The update channel is compiled in (commands/update.rs).
+    // Compiled-in release settings (commands/update.rs, state::client_id).
+    println!("cargo:rerun-if-env-changed=NIGHT_CLIENT_MSA_CLIENT_ID");
     println!("cargo:rerun-if-env-changed=NIGHT_CLIENT_UPDATE_PUBKEY");
     println!("cargo:rerun-if-env-changed=NIGHT_CLIENT_UPDATE_ENDPOINT");
     tauri_build::try_build(
