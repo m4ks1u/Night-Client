@@ -95,6 +95,7 @@ pub async fn update_instance(
     let p = InstancePatch {
         name: patch.name,
         max_memory_mb: patch.max_memory_mb,
+        java_path: None,
     };
     let i = with_db(&state, move |db| db.update_instance(&id, p)).await?;
     Ok(view(&state, i))

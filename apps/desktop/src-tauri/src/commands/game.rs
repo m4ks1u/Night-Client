@@ -5,6 +5,7 @@ use nc_launcher::{
     CancellationToken,
     instance::{LaunchRequest, prepare_launch},
     process::{self, LogLine},
+    queue::JobKind,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -80,10 +81,7 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
             return Err(CmdError::new("busy", "this instance is already running"));
         }
     }
-    if lock(&state.install)
-        .as_ref()
-        .is_some_and(|(v, _)| v == &instance.game_version)
-    {
+    if lock(&state.queue).is_busy_with(JobKind::Version, &instance.game_version) {
         return Err(CmdError::new(
             "busy",
             "this version is still being installed",
@@ -100,6 +98,7 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
                 .max_memory_mb
                 .unwrap_or(settings.default_max_memory_mb),
             extra_jvm_args: vec![],
+            java_override: instance.java_path.as_ref().map(std::path::PathBuf::from),
         },
     )
     .await?;
