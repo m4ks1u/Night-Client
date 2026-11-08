@@ -6,6 +6,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 3 (authentication persistence, JVM arguments)
+- DPAPI-encrypted token vault in %LOCALAPPDATA% (machine-local); refresh tokens never touch SQLite or logs.
+- Persistent, multiple Microsoft accounts with switching and removal (migration v3, metadata only).
+- Automatic session renewal with refresh-token rotation, revoked-token cleanup, profile-mismatch protection and a startup check.
+- Per-instance JVM arguments: shell-free parsing, allowlist validation on save and at launch.
+- Accounts screen and JVM-arguments editor.
+
 ### Added: Stage 2 (installation engine hardening)
 - Legacy asset layouts: pre-1.6 resources copied into the instance, 1.6–1.7 virtual assets; versions 1.5.2 to 26.3 verified by a real-network matrix test.
 - Download queue with cancel and remove, plus a background worker; Downloads screen with persistent history (migration v2).

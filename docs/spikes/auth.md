@@ -51,6 +51,4 @@ Mojang**, because the project has no approved Azure application ID yet.
   not yet verified against a real registration.
 - Browsers that resolve `localhost` to `::1` first: we bind IPv4 only and rely on the browser falling back
   to IPv4. If that fails in practice, also bind `[::1]` on the same port.
-- Token storage is in memory only in Stage 0. Stage 3 adds the DPAPI vault: the refresh token is
-  encrypted with `CryptProtectData` (user scope) in `%LOCALAPPDATA%`. Windows Credential Manager was
-  rejected because of its ~2.5 KB blob limit.
+- Token storage (Stage 3): the refresh token is encrypted with DPAPI and stored in `%LOCALAPPDATA%\NightClient\vault`; see `nc_launcher::vault` and `nc_launcher::accounts`. Windows Credential Manager was rejected because of its ~2.5 KB blob limit.

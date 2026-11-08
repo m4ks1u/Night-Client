@@ -27,6 +27,7 @@ Out of scope: vulnerabilities in Minecraft itself or in third-party mods. Report
 ## Design commitments
 
 - Microsoft sign-in uses OAuth 2.0 with PKCE in the system browser. Night Client never sees your password.
-- Refresh tokens are stored only with Windows DPAPI (from Stage 3), never in SQLite or plain files.
+- Refresh tokens are stored only encrypted with Windows DPAPI (current user) in `%LOCALAPPDATA%\NightClient\vault`, never in SQLite, logs or plain files. Minecraft access tokens stay in memory.
+- User-supplied JVM arguments are parsed without a shell and checked against an allowlist. Agents, classpath changes and command-running flags are refused.
 - Every downloaded file is checked against an official hash when one is published.
 - Application updates are signed. Signing keys are never stored in this repository.

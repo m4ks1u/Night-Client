@@ -78,7 +78,17 @@ Sign-in needs your own Azure app registration and Mojang's approval. See [spikes
 NIGHT_CLIENT_MSA_CLIENT_ID=<your-guid> pnpm dev
 ```
 
-## 8. Benchmarks and smoke test
+## 8. Demo accounts for UI testing
+
+With the app closed, this adds two demo accounts. DemoAlex gets a dummy DPAPI token; DemoSteve gets none, so it shows as expired. Neither works for real sign-in.
+
+```bash
+cargo run -p nc-launcher --example seed_demo_accounts -- "%APPDATA%/NightClient/night-client.db" "%LOCALAPPDATA%/NightClient/vault"
+```
+
+Add `--remove` to delete them again.
+
+## 9. Benchmarks and smoke test
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts/bench-startup.ps1 -Runs 5
