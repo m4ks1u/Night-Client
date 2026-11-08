@@ -17,6 +17,9 @@ pub struct LaunchPaths {
     pub libraries_dir: PathBuf,
     pub natives_dir: PathBuf,
     pub client_jar: PathBuf,
+    /// Value of `${game_assets}` for legacy versions: `assets/virtual/<index>`
+    /// for virtual indexes, `<game_dir>/resources` for pre-1.6, else the assets root.
+    pub game_assets: PathBuf,
     /// Downloaded log4j configuration, if the version declares one.
     pub log_config: Option<PathBuf>,
 }
@@ -131,10 +134,7 @@ pub fn build(
         ("version_name", version.id.clone()),
         ("game_directory", d(&paths.game_dir)),
         ("assets_root", d(&paths.assets_root)),
-        (
-            "game_assets",
-            d(&paths.assets_root.join("virtual").join("legacy")),
-        ),
+        ("game_assets", d(&paths.game_assets)),
         ("assets_index_name", assets_index_name),
         ("auth_uuid", auth.uuid.clone()),
         ("auth_access_token", auth.access_token.expose().to_owned()),
