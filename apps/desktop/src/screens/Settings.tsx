@@ -15,7 +15,7 @@ export function Settings() {
   const [error, setError] = useState<CmdError | null>(null);
   const [saved, setSaved] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const ids = { conc: useId(), hide: useId(), motion: useId() };
+  const ids = { conc: useId(), hide: useId(), motion: useId(), gpu: useId() };
 
   useEffect(() => {
     if (settings && !draft) setDraft(settings);
@@ -75,6 +75,7 @@ export function Settings() {
           </Card>
 
           <Card title="Appearance">
+            <div className="flex flex-col gap-4">
             <Toggle
               id={ids.motion}
               checked={draft.reduceMotion}
@@ -82,6 +83,16 @@ export function Settings() {
               label="Reduce motion"
               description="Night Client already follows Windows' animation setting. This turns animations off regardless."
             />
+            <Toggle
+              id={ids.gpu}
+              checked={draft.gpuAcceleration}
+              onChange={(v) => update({ ...draft, gpuAcceleration: v })}
+              label="Hardware acceleration"
+              description={`Draw the launcher with the graphics card. Off uses about 70 MB less memory and leaves the GPU to your game; turn it on if animations stutter on a high-resolution display.${
+                info && draft.gpuAcceleration !== info.gpuActive ? " Restart Night Client to apply." : ""
+              }`}
+            />
+            </div>
           </Card>
 
           <JavaList />

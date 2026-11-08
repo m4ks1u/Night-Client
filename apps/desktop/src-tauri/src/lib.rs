@@ -9,6 +9,7 @@
 //! * high-frequency data (progress, logs) is throttled/batched before IPC.
 
 mod commands;
+mod memory;
 mod state;
 
 use std::{path::PathBuf, sync::OnceLock, time::Instant};
@@ -102,19 +103,27 @@ fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>
         .first()
         .ok_or("missing main window config")?
         .clone();
+    // Tauri's defaults, plus software rendering unless the user turned the
+    // GPU on: the GPU process costs ~70 MB and this UI draws just as
+    // smoothly without it (docs/benchmarks).
+    let gpu = app.state::<state::AppState>().gpu_active;
     #[allow(unused_mut)]
-    let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &cfg)?;
+    let mut args = String::from("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection");
+    if !gpu {
+        args.push_str(" --disable-gpu");
+    }
     #[cfg(debug_assertions)]
     if let Some(port) = std::env::var("NIGHT_CLIENT_DEVTOOLS_PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
     {
         tracing::warn!(port, "DEBUG BUILD: WebView2 remote debugging enabled");
-        builder = builder.additional_browser_args(&format!(
-            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}"
-        ));
+        args.push_str(&format!(" --remote-debugging-port={port}"));
     }
-    builder.build()?;
+    tracing::info!(gpu, "creating main window");
+    tauri::WebviewWindowBuilder::from_config(app.handle(), &cfg)?
+        .additional_browser_args(&args)
+        .build()?;
     Ok(())
 }
 
@@ -144,6 +153,7 @@ pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
+                memory::set_low(&w, false);
                 let _ = w.show();
                 let _ = w.unminimize();
                 let _ = w.set_focus();
@@ -151,6 +161,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(memory::on_window_event)
         .setup(move |app| {
             let home = Layout::default_root();
             let root = nc_launcher::relocate::resolve_root(&home);
