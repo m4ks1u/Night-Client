@@ -2,9 +2,12 @@
 
 /* ---------------------------------------------------------------------------
    Night Client design tokens (single source of truth).
-   Colours were chosen for WCAG AA on the surfaces they are used on:
-   fg on bg 16.1:1 · fg-muted on surface-1 6.9:1 · accent on bg 6.3:1 ·
-   accent-fg on accent 6.3:1.
+   Text colours meet WCAG AA (4.5:1) on every surface up to surface-3,
+   measured (Stage 6, axe-core + manual calculation):
+     fg        13.9–16.7:1      fg-muted  6.4–7.7:1     fg-faint  4.8–5.8:1
+     accent    5.0–6.0:1        success   8.5–10.3:1    warning   10.0–12.1:1
+     danger    5.9–7.1:1        accent-fg on accent 6.0:1
+   Disabled controls (opacity) are exempt under WCAG 1.4.3.
    ------------------------------------------------------------------------- */
 @theme {
   --font-sans: "Geist", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
@@ -19,7 +22,7 @@
 
   --color-fg: #ececf3;
   --color-fg-muted: #a1a1b5;
-  --color-fg-faint: #6f6f86;
+  --color-fg-faint: #8a8aa0;
 
   --color-accent: #8b7cff;
   --color-accent-hover: #9d90ff;
@@ -103,6 +106,14 @@
     border-radius: 999px;
     background-clip: padding-box;
   }
+}
+
+/* In-app "Reduce motion" setting (in addition to the Windows setting below). */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
