@@ -58,6 +58,8 @@ macro_rules! app_commands {
             commands::window::show_snap_layouts,
             commands::data::data_folder_info,
             commands::data::relocate_data,
+            commands::update::check_for_update,
+            commands::update::install_update,
             commands::mods::mod_install_plan,
             commands::mods::mod_install,
             commands::mods::list_mods,
@@ -150,7 +152,7 @@ pub fn run() {
         };
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "Night Client starting");
 
-    let result = tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
                 memory::set_low(&w, false);
@@ -160,7 +162,13 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+    // Only builds with an update channel get the updater (see commands::update).
+    if let Some(updater) = commands::update::plugin() {
+        builder = builder.plugin(updater);
+    }
+    let result = builder
+        .manage(commands::update::Pending::default())
         .on_window_event(memory::on_window_event)
         .setup(move |app| {
             let home = Layout::default_root();
@@ -172,6 +180,12 @@ pub fn run() {
                 log_dir.clone(),
             ));
             commands::downloads::spawn_worker(app.handle().clone());
+            let check_updates = app
+                .state::<state::AppState>()
+                .store
+                .as_ref()
+                .is_some_and(|s| s.app_settings().check_updates);
+            commands::update::spawn_startup_check(app.handle().clone(), check_updates);
             // Remove temp files left by crashed downloads (older than a day,
             // so a recent interruption can still resume).
             tauri::async_runtime::spawn_blocking(move || {

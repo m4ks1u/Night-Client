@@ -5,6 +5,7 @@ import { api, toCmdError, type CmdError, type Settings as SettingsT } from "../l
 import { useApp } from "../stores/app";
 import { JavaList } from "../components/JavaPicker";
 import { DataFolderCard } from "../components/DataFolderCard";
+import { UpdatesCard } from "../components/UpdatesCard";
 
 export function Settings() {
   const settings = useApp((s) => s.settings);
@@ -137,6 +138,8 @@ export function Settings() {
               ))}
             </dl>
           </Card>
+
+          <UpdatesCard autoCheck={draft.checkUpdates} onAutoCheck={(v) => update({ ...draft, checkUpdates: v })} />
 
           <Card title="About">
             <div className="text-[13px] leading-relaxed text-fg-muted">

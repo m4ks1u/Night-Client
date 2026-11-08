@@ -291,6 +291,7 @@ fn settings_roundtrip_defaults_and_corruption() {
         hide_on_launch: true,
         reduce_motion: true,
         gpu_acceleration: true,
+        check_updates: false,
     };
     s.save_app_settings(&custom).unwrap();
     assert_eq!(s.app_settings(), custom);

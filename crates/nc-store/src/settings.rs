@@ -20,6 +20,8 @@ pub struct AppSettings {
     /// renders just as smoothly in software and the GPU process costs about
     /// 70 MB. Applied at startup.
     pub gpu_acceleration: bool,
+    /// Look for a newer Night Client shortly after startup (official builds only).
+    pub check_updates: bool,
 }
 
 impl Default for AppSettings {
@@ -30,6 +32,7 @@ impl Default for AppSettings {
             hide_on_launch: false,
             reduce_motion: false,
             gpu_acceleration: false,
+            check_updates: true,
         }
     }
 }

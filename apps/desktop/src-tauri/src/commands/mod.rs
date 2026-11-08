@@ -9,6 +9,7 @@ pub mod game;
 pub mod instances;
 pub mod java;
 pub mod mods;
+pub mod update;
 pub mod versions;
 pub mod window;
 
