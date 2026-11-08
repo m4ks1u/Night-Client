@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowUpCircle, Compass, FilePlus2, Loader2, Package, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
 import { Button } from "./Button";
 import { ModIcon } from "./ModParts";
@@ -17,6 +18,70 @@ export function updateNotices(s: UpdateSummary): string[] {
       `The new versions require ${s.missingDependencies.join(", ")}, which ${s.missingDependencies.length > 1 ? "have" : "has"} no version for this game version and loader. The updated mods may not load.`,
     );
   return out;
+}
+
+/** Lists longer than this render only the rows near the viewport. */
+export const VIRTUALIZE_ABOVE = 100;
+const rowClass = (m: ModRecord) => `flex items-center gap-3 px-4 py-3 ${m.enabled ? "" : "opacity-60"}`;
+const listClass = "overflow-hidden rounded-lg border border-line bg-surface-1";
+
+/**
+ * Installed mods. Short lists render every row; long ones (modpack-sized)
+ * render only the rows near the viewport of the page's scroll container,
+ * with aria-setsize/posinset so screen readers still announce the total.
+ */
+function ModList({ mods, renderRow }: { mods: ModRecord[]; renderRow: (m: ModRecord) => ReactNode }) {
+  if (mods.length <= VIRTUALIZE_ABOVE) {
+    return (
+      <ul className={`divide-y divide-line ${listClass}`} aria-label="Installed mods">
+        {mods.map((m) => (
+          <li key={m.fileName} className={rowClass(m)}>
+            {renderRow(m)}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return <VirtualModList mods={mods} renderRow={renderRow} />;
+}
+
+function VirtualModList({ mods, renderRow }: { mods: ModRecord[]; renderRow: (m: ModRecord) => ReactNode }) {
+  const listRef = useRef<HTMLUListElement>(null);
+  const [margin, setMargin] = useState(0);
+  const scroller = () => document.getElementById("main");
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const main = scroller();
+    if (list && main) setMargin(list.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop);
+  }, [mods.length]);
+  const v = useVirtualizer({
+    count: mods.length,
+    getScrollElement: scroller,
+    estimateSize: () => 61,
+    overscan: 8,
+    scrollMargin: margin,
+    getItemKey: (i) => mods[i]!.fileName,
+  });
+  return (
+    <ul ref={listRef} className={`relative ${listClass}`} style={{ height: v.getTotalSize() }} aria-label="Installed mods">
+      {v.getVirtualItems().map((item) => {
+        const m = mods[item.index]!;
+        return (
+          <li
+            key={item.key}
+            data-index={item.index}
+            ref={v.measureElement}
+            aria-setsize={mods.length}
+            aria-posinset={item.index + 1}
+            className={`absolute inset-x-0 top-0 border-b border-line last:border-b-0 ${rowClass(m)}`}
+            style={{ transform: `translateY(${item.start - margin}px)` }}
+          >
+            {renderRow(m)}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 export function ModsTab({ instance }: { instance: Instance }) {
@@ -124,11 +189,12 @@ export function ModsTab({ instance }: { instance: Instance }) {
       ) : mods.length === 0 ? (
         <EmptyState icon={<Package size={20} />} title="No mods yet" body="Find mods on Modrinth, or add a .jar file you already have." />
       ) : (
-        <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface-1" aria-label="Installed mods">
-          {mods.map((m) => {
+        <ModList
+          mods={mods}
+          renderRow={(m) => {
             const up = updateFor(m.fileName);
             return (
-              <li key={m.fileName} className={`flex items-center gap-3 px-4 py-3 ${m.enabled ? "" : "opacity-60"}`}>
+              <>
                 <ModIcon url={m.iconUrl} size={36} />
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2 text-[13px] font-medium">
@@ -151,10 +217,10 @@ export function ModsTab({ instance }: { instance: Instance }) {
                   />
                 </div>
                 <Button size="sm" variant="ghost" aria-label={`Remove ${m.title}`} icon={<Trash2 size={13} />} disabled={running || busy !== null} onClick={() => setRemoving(m)} />
-              </li>
+              </>
             );
-          })}
-        </ul>
+          }}
+        />
       )}
 
       <Dialog
