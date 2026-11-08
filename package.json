@@ -1,0 +1,11 @@
+{
+  "name": "night-client-workspace",
+  "private": true,
+  "packageManager": "pnpm@12.18.0",
+  "scripts": {
+    "dev": "pnpm --filter @night-client/desktop tauri dev",
+    "build": "pnpm --filter @night-client/desktop tauri build",
+    "test": "pnpm --filter @night-client/desktop test",
+    "typecheck": "pnpm --filter @night-client/desktop typecheck"
+  }
+}

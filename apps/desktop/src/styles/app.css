@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Night Client design tokens (single source of truth).
+   Text colours meet WCAG AA (4.5:1) on every surface up to surface-3,
+   measured (Stage 6, axe-core + manual calculation):
+     fg        13.9–16.7:1      fg-muted  6.4–7.7:1     fg-faint  4.8–5.8:1
+     accent    5.0–6.0:1        success   8.5–10.3:1    warning   10.0–12.1:1
+     danger    5.9–7.1:1        accent-fg on accent 6.0:1
+   Disabled controls (opacity) are exempt under WCAG 1.4.3.
+   ------------------------------------------------------------------------- */
+@theme {
+  --font-sans: "Geist", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --color-bg: #0b0b10;
+  --color-surface-1: #111118;
+  --color-surface-2: #17171f;
+  --color-surface-3: #1f1f2a;
+  --color-line: #252532;
+  --color-line-strong: #343446;
+
+  --color-fg: #ececf3;
+  --color-fg-muted: #a1a1b5;
+  --color-fg-faint: #8a8aa0;
+
+  --color-accent: #8b7cff;
+  --color-accent-hover: #9d90ff;
+  --color-accent-press: #7a6aef;
+  --color-accent-fg: #0b0b10;
+  --color-accent-soft: rgb(139 124 255 / 0.14);
+
+  --color-info: #6aa8ff;
+  --color-success: #4fd1a5;
+  --color-warning: #f2c46d;
+  --color-danger: #ff6b7a;
+  --color-danger-soft: rgb(255 107 122 / 0.12);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+
+  --text-2xs: 0.6875rem;
+
+  --animate-indeterminate: nc-indeterminate 1.1s ease-in-out infinite;
+  @keyframes nc-indeterminate {
+    0% { left: -35%; }
+    100% { left: 100%; }
+  }
+}
+
+@font-face {
+  font-family: "Geist";
+  src: url("../assets/fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../assets/fonts/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "tnum";
+    overflow: hidden;
+    user-select: none;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+}
+
+/* In-app "Reduce motion" setting (in addition to the Windows setting below). */
+/* Compact layout: every Tailwind spacing utility (padding, gap, margin,
+   control heights) is a multiple of --spacing, so one value tightens the
+   whole UI. Text sizes are set separately and do not change. 0.22rem keeps
+   the smallest controls (h-8 → 28 px) above the 24 px WCAG 2.2 target size. */
+:root.density-compact {
+  --spacing: 0.22rem;
+}
+
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

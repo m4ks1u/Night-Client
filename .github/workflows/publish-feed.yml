@@ -1,0 +1,44 @@
+name: Publish update feed
+
+# Points installed copies at a published release: copies that release's
+# latest.json to the fixed "update-feed" release that the updater reads.
+# Run it by hand only after the release itself has been published and
+# tested. See docs/releasing.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Published release tag to offer as the update (for example v0.1.0-beta.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Check the release is published
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "invalid tag: $TAG"; exit 1; }
+          draft=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)
+          [ "$draft" = "false" ] || { echo "$TAG is still a draft; publish it first"; exit 1; }
+      - name: Copy latest.json to the update-feed release
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir feed
+          jq -e --arg v "${TAG#v}" '.version == $v' feed/latest.json > /dev/null
+          if ! gh release view update-feed --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create update-feed --repo "$GITHUB_REPOSITORY" --prerelease \
+              --title "Update feed (do not delete)" --notes "Read by Night Client's updater."
+          fi
+          gh release upload update-feed feed/latest.json --repo "$GITHUB_REPOSITORY" --clobber
