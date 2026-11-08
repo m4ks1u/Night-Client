@@ -6,6 +6,20 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 6 (UI refinement)
+- Command palette (Ctrl+K) to go to any screen, or to open or play any instance.
+- Keyboard shortcuts (Ctrl+N, Ctrl+,, Ctrl+F, Alt+←), listed in Settings.
+- Toasts for finished or failed installs and for a game that exited with an error.
+- Deterministic artwork per instance; grid or list view on Instances.
+- Virtualized game log.
+- Reduce-motion setting.
+- Windows 11 snap layouts when hovering the maximize button.
+- Skip link, focus moves to the page heading on navigation, offline banner.
+- End-to-end UI smoke test and an axe-core accessibility audit for debug builds.
+
+### Fixed
+- Faint text now meets WCAG AA contrast (4.8:1 or better) on every surface.
+
 ### Added: Stage 5 (Modrinth)
 - Discover screen: search scoped to an instance's loader and game version, categories, sorting, pagination, icons.
 - Install plans with required-dependency resolution and warnings for missing dependencies and declared conflicts, confirmed before install.

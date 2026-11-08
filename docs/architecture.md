@@ -172,14 +172,30 @@ src/
   App.tsx            shell: title bar, sidebar, animated route outlet, global event subscriptions
   stores/app.ts      Zustand: app info, settings, account, instances, versions, install, running games, logs
   stores/router.ts   in-memory router with history (Alt+← and mouse back button)
+  stores/toast.ts    toast queue (at most 4)
   lib/ipc.ts         the only file that names commands/events
   lib/actions.ts     cross-screen flows (install-if-needed → launch)
-  components/        Button, ui primitives (Card, Dialog, Toggle, MemorySlider, states…), Sidebar, PlayButton, LogView
-  screens/           Home, Instances, NewInstance, InstanceDetail, Accounts, Settings, Diagnostics
+  components/        Button, ui primitives (Card, Dialog, Toggle, MemorySlider, states…), Sidebar, PlayButton,
+                     LogView (virtualized), CommandPalette, Toaster, InstanceArt, TitleBar
+  screens/           Home, Instances, NewInstance, InstanceDetail, Discover, Downloads, Accounts, Settings, Diagnostics
+e2e/                 DevTools-protocol driver, UI smoke test, axe-core accessibility audit (debug builds only)
 ```
 
-Screens for features that don't exist yet (Downloads, mods) are not shown, so there are no placeholder
-controls.
+Rules:
+- **Zustand selectors must return stable values.** Select the stored object and derive arrays in
+  `useMemo`. A selector that builds a new `[]` or `{}` re-renders forever under Zustand v5
+  (React #185).
+- **Colour tokens live on `:root` in `styles/app.css`**, with measured contrast ratios in comments.
+  `fg-faint` is the dimmest text colour allowed, at 4.8:1 or better on every surface.
+- **Motion** is 100–220 ms. It is off when the OS asks for reduced motion or the "Reduce motion"
+  setting is on (`MotionConfig` plus a `.reduce-motion` class).
+- **Global shortcuts** are handled in `App.tsx` and documented in Settings → Keyboard shortcuts.
+- **Results that finish off-screen** (installs, game crashes) are reported as toasts. Errors use
+  `role=alert`.
+- **Snap layouts:** the title bar's maximize button calls `show_snap_layouts` after a 500 ms hover. That
+  command sends Win+Z only when the window is focused and not maximized.
+
+Screens for features that don't exist yet are not shown, so there are no placeholder controls.
 
 ## Planned additions
 
