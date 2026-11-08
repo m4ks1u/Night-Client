@@ -203,25 +203,38 @@ The new overrides are extracted and the new files downloaded (size, SHA-1, SHA-5
 folder, `<game>/.nc-update/<random id>` (created exclusively, with an `owner` marker). The update may
 change the Minecraft and loader versions, never the loader.
 
-Moving files into place is a transaction (since the audit fixes):
+Moving files into place is a transaction (since the audit fixes, tightened by the re-review fixes):
 1. **Preflight.** Every step is checked against the disk before anything changes: no file where a folder
    is needed, no links on the way, files still as planned, staged sources present.
-2. **Journal.** `journal.json` lists every folder to create and every rename, and is written (atomically,
-   flushed) before the first change. Old files are renamed into `<txn>/b/`, never deleted; new ones are
-   renamed in from staging. A `committed` marker follows the last rename.
-3. **Undo.** Any failure undoes the renames in reverse. A move is undone where its destination exists
+2. **Journal.** `journal.json` (format 2) carries the update's id (its folder name, 128 random bits as
+   32 hex digits) and lists every folder to create and every rename, and is written (atomically, flushed)
+   before the first change. A journal whose format or id doesn't match its folder is kept, never trusted.
+   Old files are renamed into `<txn>/b/`, never deleted; new ones are renamed in from staging. A
+   `committed` marker follows the last rename.
+3. **Change detection.** Each step the plan replaces or removes carries the SHA-1 the plan saw. After the
+   old file is moved aside, its hash is checked: a file edited after planning (during the download, for
+   example) fails the update and is put back. Every rename refuses to replace an existing file
+   (`MoveFileExW` without `MOVEFILE_REPLACE_EXISTING` on Windows, link-then-unlink elsewhere), so a file
+   that appears just before its move is never overwritten either.
+4. **Undo.** Any failure undoes the renames in reverse. A move is undone where its destination exists
    and its source doesn't, so undoing is idempotent and needs no progress records; nothing is ever
    overwritten, and an old file that can't go back keeps the update folder.
-4. **Recording.** The command records the new version and files in the database, then calls `finish`
-   (drops the old files). If recording fails it calls `rollback`.
-5. **Recovery.** Before every update and every launch, `packupdate::recover` looks for our folders in
-   `.nc-update`: one without a journal is removed; one that is committed *and* whose target matches the
-   database's version is finished; any other is undone. Files and records therefore match after a crash.
+5. **Recording.** The command records the pack, its files, the instance's versions and the update's id
+   in **one** SQLite transaction (`Database::record_modpack_update`, migration v9 adds
+   `instance_modpack.last_update_id`), then calls `finish` (drops the old files). If recording fails, it
+   reads the id back: if the update was recorded after all it stands; if not, `rollback`; if the database
+   can't answer, the files are left for recovery.
+6. **Recovery.** Before every update and every launch, `packupdate::recover` looks for our folders in
+   `.nc-update`: one without a journal is removed; one that is committed *and* whose id is the database's
+   `last_update_id` is finished; any other is undone. Two updates to the same pack version are therefore
+   told apart, and files and records match after a crash at any point (tested by aborting a child process
+   at each step).
 
 Folders in `.nc-update` without our marker are never touched, and `.nc-update` itself is removed only
 when empty. Packs can't write into `.nc-update` or `.natives` (`nc_core::mrpack::RESERVED_DIRS`, any
 letter case, also through a Windows 8.3 short name). A launch and an update of the same instance hold the
-same slot, so they never overlap.
+same slot, so they never overlap; a launch takes the slot before it reads the instance, so it never
+starts from versions an update is about to change.
 
 ### Confined writes
 
@@ -229,8 +242,12 @@ same slot, so they never overlap.
 modpack indexes and overrides, update steps). Existing components under the root are checked with
 `symlink_metadata`; symlinks and junctions are refused (other reparse points, like OneDrive placeholders,
 are ordinary files). Folders are created one level at a time, temporary files get a random name and are
-created exclusively, and the destination folder is resolved again before each rename. The root itself is
-trusted and may be a junction (a moved instance folder).
+created exclusively, and the destination folder is resolved again before each rename. Renames never
+replace an existing file. Cleanup after a failure goes through `Confined::remove_temp`, which deletes a
+temporary file only while its folder still checks out; otherwise it leaves the file (and logs a warning),
+so a folder swapped for a junction never makes cleanup delete outside the root. Modpack downloads pass
+the root to the download engine (`DownloadTask::root`), which creates folders and checks `.part` files and
+destinations through it. The root itself is trusted and may be a junction (a moved instance folder).
 
 ### Modpacks (Stage 13)
 

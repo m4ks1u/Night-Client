@@ -6,6 +6,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Security: re-review fixes (RR-001 to RR-004)
+- A modpack update is recorded in the database in one transaction: pack, files, Minecraft and loader versions, and the update's id (migration v9). A failure records nothing.
+- Recovery after a crash keeps an update only when the database recorded that exact update, so two updates to the same pack version can't be confused.
+- A file you edit while an update downloads is detected when it's about to be replaced; the update is undone and your edit kept. Moves never overwrite a file.
+- Cleanup after a failed write never deletes anything through a folder that was swapped for a junction; modpack downloads go through the same checks.
+- A launch takes the instance's update slot before reading it, so it can't start from versions an update is changing.
+
 ### Security: independent audit fixes (NC-AUDIT-001 to 003)
 - Archive extraction, modpack imports and modpack updates no longer follow a junction or symlink that already exists inside the instance; temporary files get random names and are created exclusively.
 - Modpack updates are now a transaction: everything is checked first, old files are kept until the update is recorded, any failure puts everything back, and an update interrupted by a crash is finished or undone before the next launch or update.

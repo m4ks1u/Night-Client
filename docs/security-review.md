@@ -46,8 +46,10 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
   junction after the check), temporary files are random and created exclusively, and the destination
   folder is resolved again before each rename. Used by `extract_zip`, modpack downloads and overrides,
   and modpack updates. `atomic_write` (and the game-settings writes) also use random, exclusive
-  temporary files. Tested by `confined::tests`, `fsutil` and `tests/update_safety.rs`, including real
-  Windows junctions.
+  temporary files. Since the re-review fixes, confined renames never replace an existing file, failure
+  cleanup never deletes through a swapped folder (RR-002), and modpack downloads create and check their
+  `.part` files through the root. Tested by `confined::tests`, `fsutil`, `tests/update_safety.rs` and
+  `tests/rereview_regressions.rs`, including real Windows junctions.
 - Maven coordinates are checked segment by segment.
 - Tested by `paths::rejects_traversal_and_windows_tricks`, `layout::rejects_traversal_in_ids`,
   `maven::rejects_malicious_coordinates`, `library_with_traversal_path_is_rejected`,
@@ -126,13 +128,24 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
   pack installed; anything the user changed or added is left alone. Paths come from the recorded list or
   a newly validated index and are joined with `safe_join`. New files are staged and verified in the game
   folder before any existing file is touched. The update version must belong to the instance's recorded
-  Modrinth project, and a version using another loader is refused.
+  Modrinth project, and a version using another loader is refused. Since the re-review fixes, a file
+  changed after planning is detected by hash when it is moved and the update is undone (RR-003); the
+  database records the update in one transaction with its random id (RR-001), and recovery keeps an
+  update only when that id is recorded (RR-004).
 
 ## Open risks
 - **Write races by a local process** (audit NC-AUDIT-001). `Confined` checks every component and
   resolves the destination folder again just before a rename, but a process running as the same user
   could still swap a folder for a junction in between. Closing that fully needs handle-relative Windows
-  APIs. Such a process can already write anywhere the user can.
+  APIs. Such a process can already write anywhere the user can. During an update, a file is hashed
+  after it has been moved aside, so an edit made before the move is always caught; a program that keeps
+  the file open and writes through that handle after the hash still writes into the moved-aside copy,
+  which is dropped once the update is recorded.
+- **No power-loss guarantee.** Files and the journal are flushed, but folder entries are not (`fsync` on
+  directories isn't available on Windows). Crash consistency is tested by aborting the process at every
+  step, not by cutting power.
+- **Not everything is confined yet.** Game-settings writes (`options.txt`, Iris settings) and NeoForge
+  installer outputs still use `safe_join` without `Confined`.
 - **Modpack update recovery needs the launcher** (NC-AUDIT-002). An update interrupted by a crash or
   power loss is finished or undone the next time the instance is updated or launched from Night Client.
   Starting the game outside Night Client before that would see a half-updated folder. Undoing never
