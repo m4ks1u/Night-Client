@@ -11,6 +11,7 @@ use nc_launcher::{
     layout::Layout,
     meta::Meta,
     queue::Queue,
+    vault::{DpapiVault, TokenVault},
 };
 use nc_store::{AppSettings, Store};
 
@@ -24,8 +25,12 @@ pub struct AppState {
     /// Rebuilt when download settings change; installs clone it at start.
     meta: RwLock<Meta>,
     pub auth: Option<Client>,
-    /// In memory only until the DPAPI vault lands in Stage 3.
-    pub session: Mutex<Option<MinecraftSession>>,
+    /// DPAPI-protected refresh tokens, keyed by profile UUID.
+    pub vault: Arc<dyn TokenVault>,
+    /// Live Minecraft sessions (access tokens), keyed by profile UUID. Memory only.
+    pub sessions: Mutex<HashMap<String, MinecraftSession>>,
+    /// Serialises token renewal so two launches never race a rotating refresh token.
+    pub refresh_lock: tokio::sync::Mutex<()>,
     pub sign_in: Mutex<Option<CancellationToken>>,
     /// Download queue (one active job, FIFO pending); the worker in
     /// `commands::downloads` drains it.
@@ -58,7 +63,9 @@ impl AppState {
             startup_error,
             auth: client_id()
                 .and_then(|id| Client::new(AuthConfig::new(id), &nc_launcher::user_agent()).ok()),
-            session: Mutex::new(None),
+            vault: Arc::new(DpapiVault::new(vault_dir())),
+            sessions: Mutex::new(HashMap::new()),
+            refresh_lock: tokio::sync::Mutex::new(()),
             sign_in: Mutex::new(None),
             queue: Mutex::new(Queue::default()),
             queue_wake: tokio::sync::Notify::new(),
@@ -91,6 +98,15 @@ fn build_meta(layout: &Layout, s: &AppSettings) -> Meta {
     // which would make the launcher unusable anyway.
     let dl = Downloader::new(&nc_launcher::user_agent(), cfg).expect("HTTP client initialises");
     Meta::new(dl, layout.clone())
+}
+
+/// `%LOCALAPPDATA%NightClientault`: machine-local, never roamed.
+fn vault_dir() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(Layout::default_root)
+        .join("NightClient")
+        .join("vault")
 }
 
 /// Azure application (client) ID: runtime env var overrides the build-time

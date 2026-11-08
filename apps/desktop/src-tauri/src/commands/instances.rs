@@ -96,6 +96,7 @@ pub async fn update_instance(
         name: patch.name,
         max_memory_mb: patch.max_memory_mb,
         java_path: None,
+        jvm_args: None,
     };
     let i = with_db(&state, move |db| db.update_instance(&id, p)).await?;
     Ok(view(&state, i))
@@ -142,4 +143,26 @@ pub async fn open_instance_dir(
     let i = with_db(&state, move |db| db.get_instance(&id)).await?;
     let dir = nc_launcher::instance::ensure_game_dir(&state.layout, &i.dir_name)?;
     super::app::open_dir(&app, &dir)
+}
+
+/// Set an instance's extra JVM arguments from user text. The text is split
+/// without a shell and validated against an allowlist; an empty string clears them.
+#[tauri::command]
+pub async fn set_instance_jvm_args(
+    state: State<'_, AppState>,
+    id: String,
+    args: String,
+) -> Result<InstanceView> {
+    validate_instance_id(&id)?;
+    if args.len() > 8192 {
+        return Err(super::invalid("JVM arguments are too long"));
+    }
+    let parsed = nc_core::jvmargs::parse(&args)
+        .map_err(|e| CmdError::new("invalid_jvm_args", e.to_string()))?;
+    let patch = InstancePatch {
+        jvm_args: Some(parsed),
+        ..Default::default()
+    };
+    let i = with_db(&state, move |db| db.update_instance(&id, patch)).await?;
+    Ok(view(&state, i))
 }
