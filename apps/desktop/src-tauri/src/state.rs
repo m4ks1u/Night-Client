@@ -29,6 +29,8 @@ pub struct AppState {
     pub vault: Arc<dyn TokenVault>,
     /// Live Minecraft sessions (access tokens), keyed by profile UUID. Memory only.
     pub sessions: Mutex<HashMap<String, MinecraftSession>>,
+    /// Modrinth API client (response cache and rate-limit state live here).
+    pub modrinth: nc_launcher::modrinth::Modrinth,
     /// Serialises token renewal so two launches never race a rotating refresh token.
     pub refresh_lock: tokio::sync::Mutex<()>,
     pub sign_in: Mutex<Option<CancellationToken>>,
@@ -66,6 +68,8 @@ impl AppState {
             vault: Arc::new(DpapiVault::new(vault_dir())),
             sessions: Mutex::new(HashMap::new()),
             refresh_lock: tokio::sync::Mutex::new(()),
+            modrinth: nc_launcher::modrinth::Modrinth::new(&nc_launcher::user_agent())
+                .expect("HTTP client initialises"),
             sign_in: Mutex::new(None),
             queue: Mutex::new(Queue::default()),
             queue_wake: tokio::sync::Notify::new(),
