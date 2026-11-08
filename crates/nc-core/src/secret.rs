@@ -1,11 +1,22 @@
 use std::fmt;
 
+use zeroize::Zeroize;
+
 /// A string that must never be logged or serialized by accident.
 ///
 /// `Debug` and `Display` print a fixed placeholder. The only way to read the
 /// value is [`Secret::expose`], which makes every use greppable in review.
+/// The buffer is overwritten with zeros when the value is dropped, so a
+/// token does not linger in freed heap memory. (Copies made by HTTP and JSON
+/// libraries before the value reaches a `Secret` are outside our control.)
 #[derive(Clone, PartialEq, Eq)]
 pub struct Secret(String);
+
+impl Drop for Secret {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
 
 impl Secret {
     pub fn new(value: impl Into<String>) -> Self {

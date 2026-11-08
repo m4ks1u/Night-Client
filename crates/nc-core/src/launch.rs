@@ -69,6 +69,14 @@ impl LaunchCommand {
     }
 }
 
+/// The arguments contain the Minecraft access token in plain text; wipe
+/// them when the command is dropped (the secrets wipe themselves).
+impl Drop for LaunchCommand {
+    fn drop(&mut self) {
+        zeroize::Zeroize::zeroize(&mut self.args);
+    }
+}
+
 impl fmt::Debug for LaunchCommand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LaunchCommand")
