@@ -6,6 +6,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 11 (older Forge)
+- Forge instances for Minecraft 1.12.2 (build 14.23.5.2851 and newer) through 1.16.5. Libraries shipped inside these installers are extracted and checked against their declared SHA-1, and their processors run on Mojang's Java 17 runtime.
+
+### Changed
+- Forge and NeoForge installs skip installer processors whose outputs are already valid, and delete stale outputs before running one.
+- After a Forge or NeoForge install, every runtime library is checked to exist.
+
 ### Added: Stage 10 (Forge, large mod lists)
 - Forge instances for Minecraft 1.17 and newer, installed by running Forge's installer processors natively, as for NeoForge.
 - Long installed-mod lists (over 100 mods) render only the rows on screen.
