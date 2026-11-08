@@ -9,6 +9,14 @@ use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use super::LoaderVersion;
+use crate::{
+    LauncherError,
+    download::{DownloadTask, Progress},
+    fsutil,
+    install::{self, InstallProgress, Installed, Phase, ProgressFn},
+    meta::Meta,
+};
+
 /// Which Fabric-style meta service a profile comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Flavor {
@@ -32,14 +40,6 @@ impl Flavor {
         }
     }
 }
-
-use crate::{
-    LauncherError,
-    download::{DownloadTask, Progress},
-    fsutil,
-    install::{self, InstallProgress, Installed, Phase, ProgressFn},
-    meta::Meta,
-};
 
 #[derive(Deserialize)]
 struct Entry {
