@@ -64,7 +64,8 @@ already installed, so it isn't shown.
   the game on Mojang's Java 8u51. Some old Forge builds are known to be picky about Java 8 updates, and
   that can only be confirmed by launching.
 - **Forge before 1.12.2**, and 1.12.2 builds older than 2851, aren't supported (legacy installer).
-- The Java 17 runtime adds about 40 MB of disk for the first Forge 1.13 to 1.16.5 install.
+- The first Forge 1.13 to 1.16.5 install also downloads the Java 17 runtime (88 MB on disk, measured),
+  unless another instance already uses it.
 - **CI still hasn't run**: no pull request is open.
 
 ## Next step
