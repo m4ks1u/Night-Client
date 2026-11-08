@@ -4,6 +4,7 @@ import { ProgressBar } from "./ProgressBar";
 import { Button } from "./Button";
 import { EmptyState, MemorySlider, Toggle } from "./ui";
 import { joinArgs } from "./JvmArgs";
+import { labelForKey } from "../lib/keys";
 import { MAX_LOG_LINES, effectiveMemory, useApp } from "../stores/app";
 import { sectionOf, useRouter } from "../stores/router";
 import { api, type Instance } from "../lib/ipc";
@@ -20,6 +21,9 @@ const inst = (over: Partial<Instance> = {}): Instance => ({
   maxMemoryMb: null,
   javaPath: null,
   jvmArgs: [],
+  gameDir: null,
+  installKey: "vanilla:1.21.1",
+  label: "Minecraft 1.21.1",
   createdAt: 0,
   lastPlayedAt: null,
   playTimeSeconds: 0,
@@ -160,5 +164,14 @@ describe("joinArgs", () => {
   it("quotes arguments the backend splitter would otherwise break up", () => {
     expect(joinArgs(["-XX:+UseG1GC", "-Dname=hello world", 'q"x', ""])).toBe('-XX:+UseG1GC "-Dname=hello world" "q\\"x" ""');
     expect(joinArgs([])).toBe("");
+  });
+});
+
+describe("labelForKey", () => {
+  it("labels every key shape, including pre-Stage-4 bare versions", () => {
+    expect(labelForKey("vanilla:1.21.1")).toBe("Minecraft 1.21.1");
+    expect(labelForKey("fabric:1.21.1:0.17.2")).toBe("Fabric 0.17.2 · 1.21.1");
+    expect(labelForKey("neoforge:26.3:26.3.0.101")).toBe("NeoForge 26.3.0.101 · 26.3");
+    expect(labelForKey("1.12.2")).toBe("Minecraft 1.12.2");
   });
 });

@@ -23,6 +23,7 @@ export const PHASE_LABEL = {
   metadata: "Fetching metadata",
   runtime: "Installing Java runtime",
   gameFiles: "Downloading game files",
+  loader: "Installing mod loader",
 } as const;
 
 export function formatMemory(mb: number): string {

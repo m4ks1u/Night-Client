@@ -60,7 +60,7 @@ export function Home() {
                       {first.name}
                     </button>
                     <div className="mt-2 flex items-center gap-3 text-xs text-fg-muted">
-                      <Badge>Vanilla {first.gameVersion}</Badge>
+                      <Badge>{first.label}</Badge>
                       <span className="flex items-center gap-1">
                         <Clock size={12} /> {formatRelative(first.lastPlayedAt)}
                       </span>
@@ -87,7 +87,7 @@ export function Home() {
                         <button type="button" className="min-w-0 text-left" onClick={() => navigate({ name: "instance", id: i.id })}>
                           <span className="block truncate text-[13px] font-medium hover:text-accent-hover">{i.name}</span>
                           <span className="text-xs text-fg-faint">
-                            {i.gameVersion} · {formatRelative(i.lastPlayedAt)}
+                            {i.label} · {formatRelative(i.lastPlayedAt)}
                           </span>
                         </button>
                         <PlayButton instance={i} size="sm" showProgress={false} />

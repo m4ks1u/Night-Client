@@ -14,9 +14,10 @@ export async function playInstance(i: Instance): Promise<CmdError | null> {
     navigate({ name: "accounts" });
     return null;
   }
+  if (!i.installKey) return { code: "invalid_input", message: "This instance has an invalid loader configuration." };
   if (!i.installed) {
-    const ok = await app.installVersion(i.gameVersion);
-    if (!ok) return useApp.getState().installErrors[i.gameVersion] ?? null;
+    const ok = await app.installVersion(i.installKey);
+    if (!ok) return useApp.getState().installErrors[i.installKey] ?? null;
   }
   useApp.getState().clearLogs(i.id);
   try {

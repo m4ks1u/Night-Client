@@ -2,7 +2,9 @@ import { useEffect, useId, useState } from "react";
 import { ArrowLeft, Plus, RefreshCw, WifiOff } from "lucide-react";
 import { Button } from "../components/Button";
 import { Card, ErrorState, Field, InlineError, MemorySlider, PageHeader, Skeleton, Toggle, inputClass } from "../components/ui";
-import { api, toCmdError, type CmdError } from "../lib/ipc";
+import { api, toCmdError, type CmdError, type LoaderKind } from "../lib/ipc";
+import { LoaderSegments, LoaderVersionSelect } from "../components/LoaderPicker";
+import { LOADER_NAME } from "../lib/keys";
 import { defaultInstanceName } from "../lib/format";
 import { useApp } from "../stores/app";
 import { useRouter } from "../stores/router";
@@ -18,13 +20,15 @@ export function NewInstance() {
   const { navigate, back } = useRouter();
 
   const [version, setVersion] = useState("");
+  const [loader, setLoader] = useState<LoaderKind>("vanilla");
+  const [loaderVersion, setLoaderVersion] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
   const [memory, setMemory] = useState<number | null>(null);
   const [downloadNow, setDownloadNow] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<CmdError | null>(null);
-  const ids = { name: useId(), version: useId(), snap: useId(), dl: useId() };
+  const ids = { name: useId(), version: useId(), snap: useId(), dl: useId(), lv: useId() };
 
   useEffect(() => void loadVersions(snapshots), [snapshots, loadVersions]);
   useEffect(() => {
@@ -33,7 +37,14 @@ export function NewInstance() {
     }
   }, [versions, version]);
 
-  const effectiveName = nameTouched ? name : version ? defaultInstanceName(version) : "";
+  const effectiveName = nameTouched
+    ? name
+    : version
+      ? loader === "vanilla"
+        ? defaultInstanceName(version)
+        : `${LOADER_NAME[loader]} ${version}`
+      : "";
+  const loaderReady = loader === "vanilla" || loaderVersion !== null;
   const defaultMem = settings?.defaultMaxMemoryMb ?? system?.recommendedMemoryMb ?? 4096;
   const nameError = nameTouched && (name.trim().length === 0 || name.trim().length > 64);
 
@@ -44,11 +55,13 @@ export function NewInstance() {
       const inst = await api.createInstance({
         name: effectiveName.trim(),
         gameVersion: version,
+        loader,
+        loaderVersion: loader === "vanilla" ? null : loaderVersion,
         maxMemoryMb: memory === null || memory === defaultMem ? null : memory,
       });
       upsert(inst);
       navigate({ name: "instance", id: inst.id });
-      if (downloadNow && !inst.installed) void installVersion(inst.gameVersion);
+      if (downloadNow && !inst.installed && inst.installKey) void installVersion(inst.installKey);
     } catch (e) {
       setError(toCmdError(e));
     } finally {
@@ -61,13 +74,13 @@ export function NewInstance() {
       <Button variant="ghost" size="sm" className="-ml-2 mb-3" icon={<ArrowLeft size={14} />} onClick={back}>
         Back
       </Button>
-      <PageHeader title="New instance" subtitle="Vanilla Minecraft: Java Edition. Fabric and NeoForge support arrives in a later update." />
+      <PageHeader title="New instance" subtitle="Minecraft: Java Edition, plain or with the Fabric or NeoForge mod loader." />
 
       <form
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!busy && version && !nameError) void create();
+          if (!busy && version && !nameError && loaderReady) void create();
         }}
       >
         <Card>
@@ -115,6 +128,24 @@ export function NewInstance() {
               )}
             </Field>
 
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[13px] font-medium">Mod loader</span>
+              <LoaderSegments value={loader} onChange={(l) => { setLoader(l); setLoaderVersion(null); }} />
+              <p className="text-xs text-fg-faint">
+                {loader === "vanilla"
+                  ? "No mods. Exactly the game Mojang ships."
+                  : loader === "fabric"
+                    ? "Lightweight loader. Many performance and quality-of-life mods use it."
+                    : "Successor to Forge, used by many large content mods."}
+              </p>
+            </div>
+
+            {loader !== "vanilla" && version && (
+              <Field label={`${LOADER_NAME[loader]} version`} htmlFor={ids.lv}>
+                <LoaderVersionSelect id={ids.lv} loader={loader} minecraft={version} value={loaderVersion} onChange={setLoaderVersion} />
+              </Field>
+            )}
+
             <Toggle
               id={ids.snap}
               checked={snapshots}
@@ -141,7 +172,7 @@ export function NewInstance() {
 
         <div className="flex justify-end gap-2">
           <Button onClick={back}>Cancel</Button>
-          <Button type="submit" variant="primary" icon={<Plus size={15} />} disabled={busy || !version || nameError}>
+          <Button type="submit" variant="primary" icon={<Plus size={15} />} disabled={busy || !version || nameError || !loaderReady}>
             Create instance
           </Button>
         </div>
