@@ -5,6 +5,7 @@
 //! through a [`tokio_util::sync::CancellationToken`] and report progress
 //! through plain callbacks.
 
+pub mod accounts;
 pub mod auth;
 pub mod download;
 pub mod error;
@@ -19,6 +20,7 @@ pub mod meta;
 pub mod process;
 pub mod queue;
 pub mod sys;
+pub mod vault;
 
 pub use error::LauncherError;
 pub use tokio_util::sync::CancellationToken;

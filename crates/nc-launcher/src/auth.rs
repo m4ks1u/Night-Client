@@ -91,6 +91,8 @@ pub enum AuthError {
     NoProfile,
     #[error("the saved sign-in expired; please sign in again")]
     ReauthRequired,
+    #[error("the saved sign-in belongs to a different Minecraft profile; sign in again")]
+    AccountMismatch,
     #[error("too many sign-in attempts; wait a minute and try again")]
     RateLimited,
     #[error("{stage}: unexpected HTTP {status}")]
@@ -125,6 +127,7 @@ impl AuthError {
             Self::NoProfile => "auth_no_profile",
             Self::ReauthRequired => "auth_reauth_required",
             Self::RateLimited => "auth_rate_limited",
+            Self::AccountMismatch => "auth_account_mismatch",
             Self::Http { .. } | Self::Network { .. } | Self::Protocol { .. } => "auth_service",
             Self::Listener(_) => "auth_listener",
         }
