@@ -51,6 +51,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "instance_modpack",
         sql: include_str!("../migrations/0008_instance_modpack.sql"),
     },
+    Migration {
+        version: 9,
+        name: "modpack_update_id",
+        sql: include_str!("../migrations/0009_modpack_update_id.sql"),
+    },
 ];
 
 pub fn user_version(conn: &Connection) -> Result<u32> {

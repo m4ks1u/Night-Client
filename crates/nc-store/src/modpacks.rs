@@ -4,7 +4,7 @@
 use rusqlite::params;
 use serde::Serialize;
 
-use crate::{Result, Store, StoreError};
+use crate::{Instance, InstancePatch, Result, Store, StoreError, instances::patch_instance};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,13 +33,68 @@ impl Store {
         pack: &ModpackRecord,
         files: &[PackFileRecord],
     ) -> Result<()> {
-        if pack.name.is_empty() || pack.name.len() > 200 || pack.version_number.is_empty() {
-            return Err(StoreError::Invalid(
-                "invalid modpack name or version".into(),
-            ));
-        }
         let mut conn = self.lock();
         let tx = conn.transaction()?;
+        write_modpack(&tx, instance_id, pack, files)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Record a finished modpack update in **one** transaction: the pack, its
+    /// files, the instance's Minecraft/loader versions (`patch`) and
+    /// `update_id`, which acknowledges that exact update for crash recovery.
+    /// On any error nothing is written.
+    pub fn record_modpack_update(
+        &self,
+        instance_id: &str,
+        pack: &ModpackRecord,
+        files: &[PackFileRecord],
+        patch: InstancePatch,
+        update_id: &str,
+    ) -> Result<Instance> {
+        if update_id.is_empty()
+            || update_id.len() > 64
+            || !update_id.bytes().all(|b| b.is_ascii_alphanumeric())
+        {
+            return Err(StoreError::Invalid("invalid update id".into()));
+        }
+        {
+            let mut conn = self.lock();
+            let tx = conn.transaction()?;
+            write_modpack(&tx, instance_id, pack, files)?;
+            tx.execute(
+                "UPDATE instance_modpack SET last_update_id = ?1 WHERE instance_id = ?2",
+                params![update_id, instance_id],
+            )?;
+            patch_instance(&tx, instance_id, patch)?;
+            tx.commit()?;
+        }
+        self.get_instance(instance_id)
+    }
+
+    /// The id of the last modpack update recorded for an instance, if any.
+    pub fn modpack_update_id(&self, instance_id: &str) -> Result<Option<String>> {
+        let conn = self.lock();
+        let mut stmt =
+            conn.prepare("SELECT last_update_id FROM instance_modpack WHERE instance_id = ?1")?;
+        let mut rows = stmt.query_map(params![instance_id], |r| r.get::<_, Option<String>>(0))?;
+        Ok(rows.next().transpose()?.flatten())
+    }
+}
+
+/// Write the pack row and its file list on the caller's transaction.
+fn write_modpack(
+    tx: &rusqlite::Connection,
+    instance_id: &str,
+    pack: &ModpackRecord,
+    files: &[PackFileRecord],
+) -> Result<()> {
+    if pack.name.is_empty() || pack.name.len() > 200 || pack.version_number.is_empty() {
+        return Err(StoreError::Invalid(
+            "invalid modpack name or version".into(),
+        ));
+    }
+    {
         tx.execute(
             "DELETE FROM instance_modpack WHERE instance_id = ?1",
             params![instance_id],
@@ -71,10 +126,11 @@ impl Store {
                 ])?;
             }
         }
-        tx.commit()?;
-        Ok(())
     }
+    Ok(())
+}
 
+impl Store {
     pub fn get_modpack(&self, instance_id: &str) -> Result<Option<ModpackRecord>> {
         let conn = self.lock();
         let mut stmt = conn.prepare(

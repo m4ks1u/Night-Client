@@ -219,8 +219,25 @@ impl Store {
             .ok_or(StoreError::NotFound)
     }
 
+    /// Apply `patch` to an instance, all fields or none (one transaction).
     pub fn update_instance(&self, id: &str, patch: InstancePatch) -> Result<Instance> {
-        let conn = self.lock();
+        {
+            let mut conn = self.lock();
+            let tx = conn.transaction()?;
+            patch_instance(&tx, id, patch)?;
+            tx.commit()?;
+        }
+        self.get_instance(id)
+    }
+}
+
+/// Apply `patch` to instance `id` on `conn`, inside the caller's transaction.
+pub(crate) fn patch_instance(
+    conn: &rusqlite::Connection,
+    id: &str,
+    patch: InstancePatch,
+) -> Result<()> {
+    {
         if let Some(name) = patch.name {
             let name = clean_name(&name)?;
             if conn.execute(
@@ -308,10 +325,11 @@ impl Store {
                 return Err(StoreError::NotFound);
             }
         }
-        drop(conn);
-        self.get_instance(id)
     }
+    Ok(())
+}
 
+impl Store {
     /// Remove the row and return it so the caller can deal with the folder.
     pub fn delete_instance(&self, id: &str) -> Result<Instance> {
         let inst = self.get_instance(id)?;

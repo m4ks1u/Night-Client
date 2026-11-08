@@ -649,7 +649,7 @@ fn v6_database_upgrades_to_v7_marking_rows_as_mods() {
         i.id
     };
     let s = Store::open(&path).unwrap();
-    assert_eq!(s.schema_version().unwrap(), 8);
+    assert_eq!(s.schema_version().unwrap(), 9);
     let m = s.list_mods(&id).unwrap();
     assert_eq!(m.len(), 1);
     assert_eq!(
@@ -700,7 +700,7 @@ fn v5_database_upgrades_to_v6_keeping_instances_and_mods() {
     }
 
     let s = Store::open(&path).unwrap();
-    assert_eq!(s.schema_version().unwrap(), 8);
+    assert_eq!(s.schema_version().unwrap(), 9);
     let i = s.get_instance(id).unwrap();
     assert_eq!(
         (
@@ -749,7 +749,7 @@ fn v5_database_upgrades_to_v6_keeping_instances_and_mods() {
 fn modpack_record_and_files_replace_and_cascade() {
     use nc_store::{ModpackRecord, PackFileRecord};
     let s = Store::open_in_memory().unwrap();
-    assert_eq!(s.schema_version().unwrap(), 8);
+    assert_eq!(s.schema_version().unwrap(), 9);
     let i = s.create_instance(new("Pack"), |_| false).unwrap();
     assert!(s.get_modpack(&i.id).unwrap().is_none());
     let rec = |v: &str| ModpackRecord {
