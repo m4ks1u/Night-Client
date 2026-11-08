@@ -13,6 +13,7 @@ mod accounts;
 mod downloads;
 mod instances;
 pub mod migrations;
+mod mods;
 mod settings;
 
 use std::{
@@ -26,6 +27,7 @@ use rusqlite::Connection;
 pub use accounts::AccountRecord;
 pub use downloads::{DownloadRecord, DownloadStatus, HISTORY_LIMIT};
 pub use instances::{Instance, InstancePatch, Loader, NewInstance};
+pub use mods::{ModRecord, ModSource};
 pub use settings::AppSettings;
 
 #[derive(Debug, thiserror::Error)]

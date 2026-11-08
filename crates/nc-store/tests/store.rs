@@ -161,6 +161,7 @@ fn shipped_migration_sql_is_valid_on_an_empty_db() {
         [
             "accounts",
             "download_history",
+            "instance_mods",
             "instances",
             "settings",
             "sqlite_sequence"
@@ -541,4 +542,59 @@ fn loader_version_and_game_dir_patches() {
         ..Default::default()
     };
     assert_eq!(s.update_instance(&nf.id, p).unwrap().game_dir, None);
+}
+
+// ------------------------------------------------------------------ mods ----
+
+use nc_store::{ModRecord, ModSource};
+
+fn modrec(instance: &str, file: &str) -> ModRecord {
+    ModRecord {
+        instance_id: instance.into(),
+        file_name: file.into(),
+        source: ModSource::Modrinth,
+        project_id: Some("AANobbMI".into()),
+        version_id: Some("v1".into()),
+        title: "Sodium".into(),
+        version_number: Some("0.8.13".into()),
+        icon_url: None,
+        sha1: "a".repeat(40),
+        sha512: "b".repeat(128),
+        size: 10,
+        enabled: true,
+        required_by: None,
+        installed_at: 0,
+    }
+}
+
+#[test]
+fn mods_crud_and_cascade_on_instance_delete() {
+    let s = Store::open_in_memory().unwrap();
+    let i = s.create_instance(new("M"), |_| false).unwrap();
+    s.upsert_mod(&modrec(&i.id, "sodium.jar")).unwrap();
+    let mut other = modrec(&i.id, "lithium.jar");
+    other.title = "Lithium".into();
+    other.source = ModSource::Local;
+    s.upsert_mod(&other).unwrap();
+    let list = s.list_mods(&i.id).unwrap();
+    assert_eq!(
+        list.iter().map(|m| m.title.as_str()).collect::<Vec<_>>(),
+        ["Lithium", "Sodium"]
+    );
+    assert!(list[1].installed_at > 0);
+
+    s.set_mod_enabled(&i.id, "sodium.jar", false).unwrap();
+    assert!(!s.list_mods(&i.id).unwrap()[1].enabled);
+    assert!(s.set_mod_enabled(&i.id, "nope.jar", true).is_err());
+    let mut bad = modrec(&i.id, "x.jar");
+    bad.sha512 = "short".into();
+    assert!(s.upsert_mod(&bad).is_err());
+
+    s.remove_mod(&i.id, "lithium.jar").unwrap();
+    assert_eq!(s.list_mods(&i.id).unwrap().len(), 1);
+    s.delete_instance(&i.id).unwrap();
+    assert!(
+        s.list_mods(&i.id).unwrap().is_empty(),
+        "rows cascade with the instance"
+    );
 }
