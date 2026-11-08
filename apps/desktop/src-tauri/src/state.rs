@@ -118,9 +118,7 @@ fn build_meta(layout: &Layout, s: &AppSettings) -> Meta {
 
 /// `%LOCALAPPDATA%\NightClient\vault`: machine-local, never roamed.
 fn vault_dir() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(Layout::default_root)
+    nc_launcher::layout::local_dir()
         .join("NightClient")
         .join("vault")
 }

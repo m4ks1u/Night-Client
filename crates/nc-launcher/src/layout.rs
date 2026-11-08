@@ -19,17 +19,44 @@ pub struct Layout {
     root: PathBuf,
 }
 
+/// `%APPDATA%`: roaming per-user data.
+pub fn roaming_dir() -> PathBuf {
+    user_folder(std::env::var_os("APPDATA"), std::env::home_dir(), "Roaming")
+}
+
+/// `%LOCALAPPDATA%`: machine-local per-user data (logs, token vault).
+pub fn local_dir() -> PathBuf {
+    user_folder(
+        std::env::var_os("LOCALAPPDATA"),
+        std::env::home_dir(),
+        "Local",
+    )
+}
+
+/// The folder an environment variable names, when it is an absolute path.
+/// Otherwise (unset, empty or relative) `<profile>\AppData\<fallback>`, and
+/// as a last resort the temp folder: never a path relative to the working
+/// directory, where data (and the token vault) would land wherever the app
+/// happened to be started.
+fn user_folder(var: Option<std::ffi::OsString>, home: Option<PathBuf>, fallback: &str) -> PathBuf {
+    var.map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| {
+            home.filter(|h| h.is_absolute())
+                .unwrap_or_else(std::env::temp_dir)
+                .join("AppData")
+                .join(fallback)
+        })
+}
+
 impl Layout {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
     }
 
-    /// `%APPDATA%\NightClient`, falling back to the current directory.
+    /// `%APPDATA%\NightClient` (see [`roaming_dir`]).
     pub fn default_root() -> PathBuf {
-        std::env::var_os("APPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("NightClient")
+        roaming_dir().join("NightClient")
     }
 
     pub fn root(&self) -> &Path {
@@ -91,6 +118,26 @@ impl Layout {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn user_folders_are_never_relative() {
+        let home = Some(PathBuf::from(r"C:\Users\a"));
+        let f = |v: Option<&str>, h: Option<PathBuf>| user_folder(v.map(Into::into), h, "Roaming");
+        assert_eq!(f(Some(r"D:\Data"), home.clone()), PathBuf::from(r"D:\Data"));
+        for bad in [None, Some(""), Some("relative"), Some(r".\x")] {
+            assert_eq!(
+                f(bad, home.clone()),
+                PathBuf::from(r"C:\Users\a\AppData\Roaming"),
+                "{bad:?}"
+            );
+        }
+        let last = f(None, Some(PathBuf::from("rel")));
+        assert!(
+            last.is_absolute() && last.ends_with(r"AppData\Roaming"),
+            "{last:?}"
+        );
+        assert!(roaming_dir().is_absolute() && local_dir().is_absolute());
+    }
 
     #[test]
     fn rejects_traversal_in_ids() {

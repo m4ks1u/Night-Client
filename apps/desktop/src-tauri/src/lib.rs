@@ -154,9 +154,7 @@ fn install_crash_reporter(log_dir: PathBuf) {
 
 /// Logs are machine-local: `%LOCALAPPDATA%\NightClient\logs`.
 fn log_dir() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(Layout::default_root)
+    nc_launcher::layout::local_dir()
         .join("NightClient")
         .join("logs")
 }
