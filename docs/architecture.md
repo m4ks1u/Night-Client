@@ -160,6 +160,31 @@ The folder is the source of truth. `instance_mods` (migration v5; `kind` column 
 and is re-synced on every listing. The app layer (`commands/mods.rs`) re-validates compatibility before every install and
 blocks changes while the game runs.
 
+### Modpack updates (Stage 14)
+
+An import records the pack's origin and every file it wrote (downloaded files and overrides, an override
+replacing a file at the same path) with its SHA-1. A pack imported from a file is looked up on Modrinth by
+SHA-512, so it can be updated too when Modrinth lists it.
+
+`nc_launcher::modrinth::packupdate` compares, per path (case-insensitive), the recorded hash, the hash on
+disk now (or of `<path>.disabled`) and the new pack's:
+
+| On disk | Recorded | In the new pack | Action |
+|---|---|---|---|
+| missing | — | yes | add |
+| missing | yes | yes | keep (the user deleted it) |
+| = new | any | yes | unchanged |
+| = recorded | yes | yes | replace (disabled stays disabled) |
+| other | any | yes | keep (the user's) |
+| = recorded | yes | no | remove |
+| other | yes | no | keep |
+
+Kept files stay tracked with their install-time hash, so later updates still see them as the user's.
+The new overrides are extracted and the new files downloaded (size, SHA-1, SHA-512) into
+`<game>/.nc-update` first. Files are only moved into place once everything is verified, so a failed or
+cancelled update changes nothing. The update may change the Minecraft and loader versions, never the
+loader. The app then records the new version and files, and patches the instance.
+
 ### Modpacks (Stage 13)
 
 - `nc_core::mrpack` parses and validates `modrinth.index.json` before anything is written: format 1,
@@ -193,6 +218,9 @@ default folder to trash; a custom folder is never touched.
 - A schema newer than the build is refused (`NewerSchema`) and the file is left untouched. The app still
   starts, shows a banner, and keeps Diagnostics available.
 - `STRICT` tables with `CHECK` constraints mirror the Rust validation.
+- v8 (Stage 14): `instance_modpack` (the pack's Modrinth project, version, name, icon) and
+  `instance_modpack_files` (each file the pack put in the game folder, with its SHA-1 then). Both
+  cascade with the instance.
 - Settings are one JSON document per key, using `#[serde(default)]`, so new settings need no migration.
   A corrupt value falls back to defaults.
 - **Never** stores tokens. Account metadata arrives in Stage 3. The refresh token goes to DPAPI, not SQLite.
@@ -286,7 +314,5 @@ See [security-review.md](security-review.md) for each requirement in the brief, 
 where it is tested.
 
 ## Planned additions
-
-- Modpack updates (the instance does not yet remember which pack and version it came from).
 
 - Authenticode signing of the installer (needs a code-signing certificate).

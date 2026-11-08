@@ -10,6 +10,7 @@ import { effectiveMemory, useApp, useVersionJob } from "../stores/app";
 import { InstanceJava } from "../components/JavaPicker";
 import { JvmArgsCard } from "../components/JvmArgs";
 import { ModsTab } from "../components/ModsTab";
+import { ModpackCard } from "../components/ModpackCard";
 import { GameFolder, LoaderCard } from "../components/InstanceSettings";
 import { navigate, useRouter, type InstanceTab } from "../stores/router";
 
@@ -132,6 +133,8 @@ function Overview({ instance }: { instance: Instance }) {
   return (
     <div className="grid gap-4">
       {error && <InlineError error={error} />}
+
+      <ModpackCard instance={instance} disabled={running || job.state !== "idle"} />
 
       <Card title="Memory">
         <div className="flex flex-col gap-5">

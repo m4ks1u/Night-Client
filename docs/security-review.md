@@ -111,6 +111,12 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
   and discards the new instance. Paths are validated when the index is parsed and again before each
   download. The WebView only ever passes a token, never a path or URL.
 
+- **Modpack updates** (Stage 14) only replace or delete files whose SHA-1 still matches what the
+  pack installed; anything the user changed or added is left alone. Paths come from the recorded list or
+  a newly validated index and are joined with `safe_join`. New files are staged and verified in the game
+  folder before any existing file is touched. The update version must belong to the instance's recorded
+  Modrinth project, and a version using another loader is refused.
+
 ## Open risks
 - **Modpacks choose their own mods** (Stage 13). The hashes prove the files are the ones the pack
   lists, not that the pack author's choices are safe. A pack from a local file is as trustworthy as its

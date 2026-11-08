@@ -21,9 +21,11 @@ use nc_launcher::{
     CancellationToken, LauncherError,
     modrinth::{
         api::{SortIndex, pick_modpack_version, valid_id},
-        modpack,
+        modpack::{self, Tracked},
+        packupdate::{self, UpdateReport},
     },
 };
+use nc_store::{InstancePatch, ModpackRecord, PackFileRecord};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
@@ -31,7 +33,7 @@ use tauri_plugin_dialog::DialogExt;
 use super::{
     CmdError, Result,
     instances::{self, InstanceView},
-    invalid,
+    invalid, validate_instance_id, with_db,
 };
 use crate::state::{AppState, lock};
 
@@ -39,8 +41,17 @@ use crate::state::{AppState, lock};
 pub struct PendingPack {
     path: PathBuf,
     pack: Pack,
+    origin: Origin,
     cancel: CancellationToken,
     importing: bool,
+}
+
+/// Where a pack came from on Modrinth (unknown for a file Modrinth doesn't list).
+#[derive(Clone, Default)]
+struct Origin {
+    project_id: Option<String>,
+    version_id: Option<String>,
+    icon_url: Option<String>,
 }
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
@@ -80,12 +91,7 @@ fn key_of(pack: &Pack) -> Result<InstallKey> {
 }
 
 /// Keep the pack behind a new token. Previews nobody imported are dropped.
-fn remember(
-    state: &AppState,
-    path: PathBuf,
-    pack: Pack,
-    icon_url: Option<String>,
-) -> Result<PackPreview> {
+fn remember(state: &AppState, path: PathBuf, pack: Pack, origin: Origin) -> Result<PackPreview> {
     let key = key_of(&pack)?;
     let token = format!("pack-{}", NEXT_TOKEN.fetch_add(1, Ordering::Relaxed));
     let preview = PackPreview {
@@ -101,7 +107,7 @@ fn remember(
         optional_files: pack.files.iter().filter(|f| f.optional).count(),
         skipped: pack.skipped,
         download_bytes: pack.download_bytes(),
-        icon_url,
+        icon_url: origin.icon_url.clone(),
     };
     let mut pending = lock(&state.modpacks);
     pending.retain(|_, p| p.importing);
@@ -110,6 +116,7 @@ fn remember(
         PendingPack {
             path,
             pack,
+            origin,
             cancel: CancellationToken::new(),
             importing: false,
         },
@@ -147,14 +154,46 @@ pub async fn modpack_preview_file(
         return Ok(None);
     };
     let pack = read(path.clone()).await?;
-    remember(&state, path, pack, None).map(Some)
+    let origin = identify(&state, &path).await;
+    remember(&state, path, pack, origin).map(Some)
 }
 
-/// Download the newest release of a Modrinth modpack project and preview it.
+/// Look a pack file up on Modrinth by SHA-512, so a pack imported from a
+/// file can still be updated. Best effort: offline or unknown means none.
+async fn identify(state: &AppState, path: &std::path::Path) -> Origin {
+    let p = path.to_owned();
+    let Ok(Ok(sha512)) = tauri::async_runtime::spawn_blocking(move || modpack::sha512_of(&p)).await
+    else {
+        return Origin::default();
+    };
+    let c = CancellationToken::new();
+    let Ok(found) = state
+        .modrinth
+        .versions_by_hash(std::slice::from_ref(&sha512), &c)
+        .await
+    else {
+        return Origin::default();
+    };
+    let Some(v) = found.into_values().next() else {
+        return Origin::default();
+    };
+    match state.modrinth.project(&v.project_id, &c).await {
+        Ok(p) if p.project_type == "modpack" => Origin {
+            project_id: Some(p.id),
+            version_id: Some(v.id),
+            icon_url: p.icon_url,
+        },
+        _ => Origin::default(),
+    }
+}
+
+/// Download a Modrinth modpack (the newest installable release, or
+/// `version_id`) and preview it.
 #[tauri::command]
 pub async fn modpack_preview_modrinth(
     state: State<'_, AppState>,
     project_id: String,
+    version_id: Option<String>,
 ) -> Result<PackPreview> {
     if !valid_id(&project_id) {
         return Err(invalid("invalid project"));
@@ -168,11 +207,28 @@ pub async fn modpack_preview_modrinth(
     if project.project_type != "modpack" {
         return Err(invalid("that project isn't a modpack"));
     }
-    let versions = state
-        .modrinth
-        .all_versions(&project.id, &c)
-        .await
-        .map_err(LauncherError::from)?;
+    let versions = match version_id {
+        // A specific version (it must belong to this project).
+        Some(vid) => {
+            if !valid_id(&vid) {
+                return Err(invalid("invalid version"));
+            }
+            let v = state
+                .modrinth
+                .version(&vid, &c)
+                .await
+                .map_err(LauncherError::from)?;
+            if v.project_id != project.id {
+                return Err(invalid("that version belongs to another project"));
+            }
+            vec![v]
+        }
+        None => state
+            .modrinth
+            .all_versions(&project.id, &c)
+            .await
+            .map_err(LauncherError::from)?,
+    };
     let v = pick_modpack_version(&versions).ok_or_else(|| {
         CmdError::new(
             "unsupported_pack",
@@ -183,7 +239,12 @@ pub async fn modpack_preview_modrinth(
     let cache = state.layout.cache_dir().join("modpacks");
     let path = modpack::fetch_pack(&state.meta().dl, &cache, file, &c).await?;
     let pack = read(path.clone()).await?;
-    remember(&state, path, pack, project.icon_url)
+    let origin = Origin {
+        project_id: Some(project.id),
+        version_id: Some(v.id.clone()),
+        icon_url: project.icon_url,
+    };
+    remember(&state, path, pack, origin)
 }
 
 #[derive(Serialize, Clone)]
@@ -207,7 +268,7 @@ pub async fn modpack_import(
     name: String,
 ) -> Result<InstanceView> {
     super::ensure_not_relocating(&state)?;
-    let (path, pack, cancel) = {
+    let (path, pack, origin, cancel) = {
         let mut pending = lock(&state.modpacks);
         let p = pending
             .get_mut(&token)
@@ -219,19 +280,26 @@ pub async fn modpack_import(
             ));
         }
         p.importing = true;
-        (p.path.clone(), p.pack.clone(), p.cancel.clone())
+        (
+            p.path.clone(),
+            p.pack.clone(),
+            p.origin.clone(),
+            p.cancel.clone(),
+        )
     };
-    let result = import(&app, &state, &token, &path, &pack, name, &cancel).await;
+    let result = import(&app, &state, &token, &path, &pack, &origin, name, &cancel).await;
     lock(&state.modpacks).remove(&token);
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn import(
     app: &AppHandle,
     state: &AppState,
     token: &str,
     path: &std::path::Path,
     pack: &Pack,
+    origin: &Origin,
     name: String,
     cancel: &CancellationToken,
 ) -> Result<InstanceView> {
@@ -242,29 +310,13 @@ async fn import(
     let work = async {
         let total_files = pack.files.len() as u64;
         let total_bytes = pack.download_bytes();
-        let (emitter, tok) = (app.clone(), token.to_owned());
-        let last = std::sync::Mutex::new(Instant::now() - Duration::from_secs(1));
-        modpack::download_files(&state.meta().dl, &game_dir, &pack.files, cancel, move |p| {
-            let mut l = last
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let finished = p.done_files + p.skipped_files >= p.total_files;
-            if l.elapsed() < Duration::from_millis(150) && !finished {
-                return;
-            }
-            *l = Instant::now();
-            let _ = emitter.emit(
-                "modpack://progress",
-                ImportProgress {
-                    token: &tok,
-                    phase: "files",
-                    done_files: p.done_files + p.skipped_files,
-                    total_files,
-                    done_bytes: p.done_bytes,
-                    total_bytes,
-                },
-            );
-        })
+        modpack::download_files(
+            &state.meta().dl,
+            &game_dir,
+            &pack.files,
+            cancel,
+            emitter(app, token, Some((total_files, total_bytes))),
+        )
         .await?;
         let _ = app.emit(
             "modpack://progress",
@@ -283,7 +335,10 @@ async fn import(
         })
         .await
         .map_err(|e| CmdError::new("internal", e.to_string()))??;
-        Ok::<usize, CmdError>(n)
+        let tracked = modpack::tracked_after_install(pack, &n);
+        let (rid, rec, files) = (id.clone(), record(pack, origin), to_rows(&tracked));
+        with_db(state, move |db| db.set_modpack(&rid, &rec, &files)).await?;
+        Ok::<usize, CmdError>(n.len())
     };
     match work.await {
         Ok(overrides) => {
@@ -302,12 +357,292 @@ async fn import(
     }
 }
 
-/// Cancel an import in progress (the half-made instance is discarded).
+/// Forward download progress as `modpack://progress`, at most every 150 ms.
+/// `totals` replaces the engine's (an import knows the whole pack's size).
+fn emitter(
+    app: &AppHandle,
+    token: &str,
+    totals: Option<(u64, u64)>,
+) -> impl Fn(nc_launcher::download::Progress) + Send + Sync + 'static {
+    let (app, token) = (app.clone(), token.to_owned());
+    let last = std::sync::Mutex::new(Instant::now() - Duration::from_secs(1));
+    move |p| {
+        let mut l = last
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let finished = p.done_files + p.skipped_files >= p.total_files;
+        if l.elapsed() < Duration::from_millis(150) && !finished {
+            return;
+        }
+        *l = Instant::now();
+        let (total_files, total_bytes) = totals.unwrap_or((p.total_files, p.total_bytes));
+        let _ = app.emit(
+            "modpack://progress",
+            ImportProgress {
+                token: &token,
+                phase: "files",
+                done_files: p.done_files + p.skipped_files,
+                total_files,
+                done_bytes: p.done_bytes,
+                total_bytes,
+            },
+        );
+    }
+}
+
+fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0))
+}
+
+fn record(pack: &Pack, origin: &Origin) -> ModpackRecord {
+    ModpackRecord {
+        project_id: origin.project_id.clone(),
+        version_id: origin.version_id.clone(),
+        name: pack.name.clone(),
+        version_number: pack.version_id.clone(),
+        icon_url: origin.icon_url.clone(),
+        installed_at: now(),
+    }
+}
+
+fn to_rows(tracked: &[Tracked]) -> Vec<PackFileRecord> {
+    tracked
+        .iter()
+        .map(|t| PackFileRecord {
+            path: t.path.clone(),
+            sha1: t.sha1.clone(),
+            is_override: t.is_override,
+        })
+        .collect()
+}
+
+fn from_rows(rows: Vec<PackFileRecord>) -> Vec<Tracked> {
+    rows.into_iter()
+        .map(|r| Tracked {
+            path: r.path,
+            sha1: r.sha1,
+            is_override: r.is_override,
+        })
+        .collect()
+}
+
+/// Cancel an import or an update in progress. A cancelled import discards
+/// the half-made instance; a cancelled update changes nothing.
 #[tauri::command]
 pub fn modpack_cancel(state: State<'_, AppState>, token: String) {
     if let Some(p) = lock(&state.modpacks).get(&token) {
         p.cancel.cancel();
     }
+    if let Some(c) = lock(&state.modpack_updates).get(&token) {
+        c.cancel();
+    }
+}
+
+/// The modpack an instance was made from, if any.
+#[tauri::command]
+pub async fn modpack_info(
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<Option<ModpackRecord>> {
+    validate_instance_id(&instance_id)?;
+    with_db(&state, move |db| db.get_modpack(&instance_id)).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LatestPack {
+    version_id: String,
+    version_number: String,
+    name: String,
+    date_published: String,
+    game_versions: Vec<String>,
+}
+
+/// The newest installable version of the instance's modpack, when it isn't
+/// the installed one. `None`: up to date.
+#[tauri::command]
+pub async fn modpack_check_update(
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<Option<LatestPack>> {
+    validate_instance_id(&instance_id)?;
+    let rec = with_db(&state, move |db| db.get_modpack(&instance_id))
+        .await?
+        .ok_or_else(|| CmdError::new("not_found", "This instance wasn't made from a modpack."))?;
+    let Some(project) = rec.project_id else {
+        return Err(CmdError::new(
+            "unknown_pack",
+            "This modpack isn't on Modrinth, so it can't be updated from here.",
+        ));
+    };
+    let versions = state
+        .modrinth
+        .all_versions(&project, &CancellationToken::new())
+        .await
+        .map_err(LauncherError::from)?;
+    Ok(pick_modpack_version(&versions)
+        .filter(|v| Some(&v.id) != rec.version_id.as_ref())
+        .map(|v| LatestPack {
+            version_id: v.id.clone(),
+            version_number: v.version_number.clone(),
+            name: v.name.clone(),
+            date_published: v.date_published.clone(),
+            game_versions: v.game_versions.clone(),
+        }))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Updated {
+    report: UpdateReport,
+    instance: InstanceView,
+}
+
+/// Update an instance to another version of its modpack. Files the user
+/// changed are kept; nothing changes unless every new file was verified.
+#[tauri::command]
+pub async fn modpack_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance_id: String,
+    version_id: String,
+) -> Result<Updated> {
+    validate_instance_id(&instance_id)?;
+    if !valid_id(&version_id) {
+        return Err(invalid("invalid version"));
+    }
+    super::ensure_not_relocating(&state)?;
+    if lock(&state.games).contains_key(&instance_id) {
+        return Err(CmdError::new(
+            "busy",
+            "Close the game before updating its modpack.",
+        ));
+    }
+    let cancel = CancellationToken::new();
+    {
+        let mut running = lock(&state.modpack_updates);
+        if running.contains_key(&instance_id) {
+            return Err(CmdError::new(
+                "busy",
+                "This modpack is already being updated.",
+            ));
+        }
+        running.insert(instance_id.clone(), cancel.clone());
+    }
+    let result = update(&app, &state, &instance_id, &version_id, &cancel).await;
+    lock(&state.modpack_updates).remove(&instance_id);
+    if cancel.is_cancelled() && result.is_err() {
+        return Err(CmdError::new(
+            "cancelled",
+            "Update cancelled. Nothing was changed.",
+        ));
+    }
+    result
+}
+
+async fn update(
+    app: &AppHandle,
+    state: &AppState,
+    instance_id: &str,
+    version_id: &str,
+    cancel: &CancellationToken,
+) -> Result<Updated> {
+    let id = instance_id.to_owned();
+    let (inst, rec, rows) = with_db(state, move |db| {
+        Ok((
+            db.get_instance(&id)?,
+            db.get_modpack(&id)?,
+            db.modpack_files(&id)?,
+        ))
+    })
+    .await?;
+    let rec =
+        rec.ok_or_else(|| CmdError::new("not_found", "This instance wasn't made from a modpack."))?;
+    let Some(project) = rec.project_id.clone() else {
+        return Err(CmdError::new(
+            "unknown_pack",
+            "This modpack isn't on Modrinth, so it can't be updated from here.",
+        ));
+    };
+    let v = state
+        .modrinth
+        .version(version_id, cancel)
+        .await
+        .map_err(LauncherError::from)?;
+    if v.project_id != project {
+        return Err(invalid("that version belongs to another project"));
+    }
+    let v = pick_modpack_version(std::slice::from_ref(&v))
+        .ok_or_else(|| CmdError::new("unsupported_pack", "That version can't be installed."))?;
+    let file = v.primary_file().expect("picked versions have a file");
+    let cache = state.layout.cache_dir().join("modpacks");
+    let path = modpack::fetch_pack(&state.meta().dl, &cache, file, cancel).await?;
+    let pack = read(path.clone()).await?;
+    let key = key_of(&pack)?;
+    let current = instances::install_key(&inst)
+        .ok_or_else(|| CmdError::new("invalid_input", "This instance's loader is invalid."))?;
+    if key.kind != current.kind {
+        return Err(CmdError::new(
+            "unsupported_pack",
+            format!(
+                "This version uses another loader ({}); create a new instance from it instead.",
+                key.label()
+            ),
+        ));
+    }
+    let game_dir = match &inst.game_dir {
+        Some(d) => PathBuf::from(d),
+        None => nc_launcher::instance::ensure_game_dir(&state.layout, &inst.dir_name)?,
+    };
+    let report = packupdate::update(
+        &state.meta().dl,
+        &game_dir,
+        &path,
+        &pack,
+        &from_rows(rows),
+        cancel,
+        emitter(app, instance_id, None),
+    )
+    .await?;
+    // From here on the files are in place: record them before anything else.
+    let origin = Origin {
+        project_id: Some(project),
+        version_id: Some(v.id.clone()),
+        icon_url: rec.icon_url.clone(),
+    };
+    let (id, new_rec, files) = (
+        inst.id.clone(),
+        record(&pack, &origin),
+        to_rows(&report.tracked),
+    );
+    let patch = InstancePatch {
+        game_version: (key.minecraft != inst.game_version).then(|| key.minecraft.clone()),
+        loader_version: key
+            .loader_version
+            .clone()
+            .filter(|lv| Some(lv) != inst.loader_version.as_ref()),
+        ..Default::default()
+    };
+    let updated = with_db(state, move |db| {
+        db.set_modpack(&id, &new_rec, &files)?;
+        db.update_instance(&id, patch)
+    })
+    .await?;
+    tracing::info!(
+        id = %updated.id,
+        version = %pack.version_id,
+        added = report.added,
+        replaced = report.replaced,
+        removed = report.removed,
+        kept = report.kept.len(),
+        "modpack updated"
+    );
+    Ok(Updated {
+        report,
+        instance: instances::view(state, updated),
+    })
 }
 
 #[derive(Serialize)]

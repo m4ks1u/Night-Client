@@ -91,6 +91,16 @@ export type PackPreview = {
   downloadBytes: number;
   iconUrl: string | null;
 };
+export type ModpackInfo = {
+  projectId: string | null;
+  versionId: string | null;
+  name: string;
+  versionNumber: string;
+  iconUrl: string | null;
+  installedAt: number;
+};
+export type LatestPack = { versionId: string; versionNumber: string; name: string; datePublished: string; gameVersions: string[] };
+export type UpdateReport = { added: number; replaced: number; removed: number; unchanged: number; kept: string[] };
 export type ModpackProgress = {
   token: string;
   phase: "files" | "overrides";
@@ -282,9 +292,15 @@ export const api = {
   modpackSearch: (query: string, sort: SortIndex, offset: number) => invoke<ModpackHits>("modpack_search", { query, sort, offset }),
   /** Native file picker; `null` when cancelled. */
   modpackPreviewFile: () => invoke<PackPreview | null>("modpack_preview_file"),
-  modpackPreviewModrinth: (projectId: string) => invoke<PackPreview>("modpack_preview_modrinth", { projectId }),
+  modpackPreviewModrinth: (projectId: string, versionId: string | null = null) =>
+    invoke<PackPreview>("modpack_preview_modrinth", { projectId, versionId }),
   modpackImport: (token: string, name: string) => invoke<Instance>("modpack_import", { token, name }),
   modpackCancel: (token: string) => invoke<void>("modpack_cancel", { token }),
+  modpackInfo: (instanceId: string) => invoke<ModpackInfo | null>("modpack_info", { instanceId }),
+  /** `null`: up to date. */
+  modpackCheckUpdate: (instanceId: string) => invoke<LatestPack | null>("modpack_check_update", { instanceId }),
+  modpackUpdate: (instanceId: string, versionId: string) =>
+    invoke<{ report: UpdateReport; instance: Instance }>("modpack_update", { instanceId, versionId }),
   modrinthCategories: (kind: ContentKind = "mod") => invoke<Category[]>("modrinth_categories", { kind }),
   modInstallPlan: (instanceId: string, projectId: string, kind: ContentKind = "mod") =>
     invoke<InstallPlan>("mod_install_plan", { instanceId, projectId, kind }),

@@ -161,6 +161,8 @@ fn shipped_migration_sql_is_valid_on_an_empty_db() {
         [
             "accounts",
             "download_history",
+            "instance_modpack",
+            "instance_modpack_files",
             "instance_mods",
             "instances",
             "settings",
@@ -647,7 +649,7 @@ fn v6_database_upgrades_to_v7_marking_rows_as_mods() {
         i.id
     };
     let s = Store::open(&path).unwrap();
-    assert_eq!(s.schema_version().unwrap(), 7);
+    assert_eq!(s.schema_version().unwrap(), 8);
     let m = s.list_mods(&id).unwrap();
     assert_eq!(m.len(), 1);
     assert_eq!(
@@ -698,7 +700,7 @@ fn v5_database_upgrades_to_v6_keeping_instances_and_mods() {
     }
 
     let s = Store::open(&path).unwrap();
-    assert_eq!(s.schema_version().unwrap(), 7);
+    assert_eq!(s.schema_version().unwrap(), 8);
     let i = s.get_instance(id).unwrap();
     assert_eq!(
         (
@@ -741,4 +743,59 @@ fn v5_database_upgrades_to_v6_keeping_instances_and_mods() {
         s.list_mods(id).unwrap().is_empty(),
         "cascade still in place"
     );
+}
+
+#[test]
+fn modpack_record_and_files_replace_and_cascade() {
+    use nc_store::{ModpackRecord, PackFileRecord};
+    let s = Store::open_in_memory().unwrap();
+    assert_eq!(s.schema_version().unwrap(), 8);
+    let i = s.create_instance(new("Pack"), |_| false).unwrap();
+    assert!(s.get_modpack(&i.id).unwrap().is_none());
+    let rec = |v: &str| ModpackRecord {
+        project_id: Some("1KVo5zza".into()),
+        version_id: Some(format!("ver{v}")),
+        name: "FO".into(),
+        version_number: v.into(),
+        icon_url: None,
+        installed_at: 7,
+    };
+    let f = |p: &str, o: bool| PackFileRecord {
+        path: p.into(),
+        sha1: "A".repeat(40),
+        is_override: o,
+    };
+    s.set_modpack(
+        &i.id,
+        &rec("1"),
+        &[f("mods/a.jar", false), f("options.txt", true)],
+    )
+    .unwrap();
+    s.set_modpack(&i.id, &rec("2"), &[f("mods/b.jar", false)])
+        .unwrap();
+    assert_eq!(s.get_modpack(&i.id).unwrap().unwrap().version_number, "2");
+    let files = s.modpack_files(&i.id).unwrap();
+    assert_eq!(files.len(), 1, "replaced, not merged");
+    assert_eq!(
+        (files[0].path.as_str(), files[0].sha1.as_str()),
+        ("mods/b.jar", &*"a".repeat(40))
+    );
+    let bad = ModpackRecord {
+        name: String::new(),
+        ..rec("3")
+    };
+    assert!(s.set_modpack(&i.id, &bad, &[]).is_err());
+    let p = s
+        .update_instance(
+            &i.id,
+            nc_store::InstancePatch {
+                game_version: Some("1.21.4".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(p.game_version, "1.21.4");
+    s.delete_instance(&i.id).unwrap();
+    assert!(s.get_modpack(&i.id).unwrap().is_none());
+    assert!(s.modpack_files(&i.id).unwrap().is_empty());
 }

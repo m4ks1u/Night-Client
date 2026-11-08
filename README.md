@@ -16,7 +16,8 @@ downloaded from official Mojang servers and verified against Mojang's published 
 - Vanilla, Fabric, Quilt, NeoForge and Forge (Minecraft 1.12.2 and newer) instances, each with its own game directory.
 - Official Mojang Java runtimes installed automatically for each version.
 - Modrinth mods (with dependency resolution), resource packs and shader packs, with update checks.
-- Modrinth modpacks (`.mrpack`), from Discover or a local file, installed as a new instance.
+- Modrinth modpacks (`.mrpack`), from Discover or a local file, installed as a new instance, and
+  updated in place while keeping your own changes.
 - Verified, resumable, cancellable downloads that never freeze the UI.
 - Signed in-app updates, a small installer (about 6 MB) and about 116 MB of memory at idle.
 - No analytics or telemetry. See [PRIVACY.md](PRIVACY.md) for every connection it makes.

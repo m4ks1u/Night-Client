@@ -5,6 +5,7 @@
 pub mod api;
 pub mod modpack;
 pub mod mods;
+pub mod packupdate;
 pub mod plan;
 
 pub use api::{Modrinth, ModrinthError};

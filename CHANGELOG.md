@@ -6,6 +6,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 14 (modpack updates)
+- Instances made from a modpack show a Modpack card on the Overview tab: the pack's version, Check for updates, and Update. The update replaces or removes only the files that are still as the pack installed them. Files you edited, deleted or added are kept, and so are disabled mods. Everything new is downloaded and verified before any file changes; cancelling changes nothing.
+- A pack imported from a file is recognised on Modrinth by its hash, so it can be updated too.
+- End-to-end test `e2e/modpack-update.mjs` (real Modrinth), also in the manual CI e2e job.
+
+### Changed
+- Database migration v8 records each instance's modpack and the files it installed.
+
 ### Added: Stage 13 (Modrinth modpacks)
 - Modrinth modpacks (`.mrpack`): a Modpacks option in Discover (no instance needed) and Import modpack on the New instance screen. A preview shows the loader, file count and download size; import creates a new instance, downloads every file verified by size, SHA-1 and SHA-512, copies the pack's overrides, then queues the game download. Cancelling or any failure removes the half-made instance.
 - End-to-end test `e2e/modpacks.mjs` (real Modrinth), also in the manual CI e2e job.

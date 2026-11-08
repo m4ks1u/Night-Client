@@ -28,6 +28,11 @@ use crate::{
     fsutil::{self, ExtractError},
 };
 
+/// SHA-512 (lower-case hex) of a pack file, to look it up on Modrinth.
+pub fn sha512_of(path: &Path) -> std::io::Result<String> {
+    sha512_file(path)
+}
+
 /// Overrides (configs, options, small resources) larger than this in total
 /// are refused: it stops a zip bomb, not a real pack.
 pub const MAX_OVERRIDES_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -151,16 +156,22 @@ pub async fn download_files(
     Ok(summary)
 }
 
-/// Copy the pack's overrides into `game_dir` (call off the async runtime).
-/// `client-overrides/` wins over `overrides/` for the same path. Returns
-/// the number of files written.
-pub fn extract_overrides(
-    archive: &Path,
-    game_dir: &Path,
-    max_total: u64,
-) -> Result<usize, LauncherError> {
-    let mut z = open(archive)?;
-    // Pick, per target path, the entry with the highest priority.
+/// A file the pack put into the instance, with its SHA-1 at that time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tracked {
+    /// Relative path in the game folder, `/`-separated.
+    pub path: String,
+    /// Lower-case hex SHA-1.
+    pub sha1: String,
+    pub is_override: bool,
+}
+
+/// Validate every override entry and pick, per target path
+/// (case-insensitive), the one with the highest priority:
+/// `client-overrides/` over `overrides/`. Returns entry indices in order.
+fn chosen_overrides(
+    z: &mut zip::ZipArchive<std::io::BufReader<std::fs::File>>,
+) -> Result<Vec<usize>, LauncherError> {
     let mut chosen: HashMap<String, (usize, u8)> = HashMap::new();
     for i in 0..z.len() {
         let entry = z
@@ -190,16 +201,45 @@ pub fn extract_overrides(
     }
     let mut order: Vec<usize> = chosen.into_values().map(|(i, _)| i).collect();
     order.sort_unstable();
+    Ok(order)
+}
+
+struct HashWriter<W> {
+    inner: W,
+    hash: sha1::Sha1,
+}
+
+impl<W: std::io::Write> std::io::Write for HashWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.inner.write(buf)?;
+        sha1::Digest::update(&mut self.hash, &buf[..n]);
+        Ok(n)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+/// Copy every chosen override to `dest(rel)` (a `.part` file, then
+/// renamed), hashing as it goes. Returns what was written and where.
+pub(crate) fn copy_overrides(
+    archive: &Path,
+    max_total: u64,
+    mut dest: impl FnMut(&str) -> Result<PathBuf, LauncherError>,
+) -> Result<Vec<(Tracked, PathBuf)>, LauncherError> {
+    let mut z = open(archive)?;
+    let order = chosen_overrides(&mut z)?;
     let mut written = 0u64;
-    for i in &order {
+    let mut out = Vec::with_capacity(order.len());
+    for i in order {
         let mut entry = z
-            .by_index(*i)
+            .by_index(i)
             .map_err(|e| LauncherError::Extract(e.into()))?;
         let name = entry.name().map(|n| n.to_string()).unwrap_or_default();
         let Some((rel, _)) = override_target(&name) else {
             continue;
         };
-        let target: PathBuf = fsutil::safe_join(game_dir, rel)?;
+        let target = dest(rel)?;
         if let Some(p) = target.parent() {
             std::fs::create_dir_all(p).map_err(LauncherError::io(p))?;
         }
@@ -207,18 +247,69 @@ pub fn extract_overrides(
             "{}.part",
             target.file_name().unwrap_or_default().to_string_lossy()
         ));
-        let mut out = std::fs::File::create(&part).map_err(LauncherError::io(&part))?;
+        let file = std::fs::File::create(&part).map_err(LauncherError::io(&part))?;
+        let mut w = HashWriter {
+            inner: file,
+            hash: <sha1::Sha1 as sha1::Digest>::new(),
+        };
         let remaining = max_total.saturating_sub(written);
-        written += std::io::copy(&mut (&mut entry).take(remaining + 1), &mut out)
+        written += std::io::copy(&mut (&mut entry).take(remaining + 1), &mut w)
             .map_err(LauncherError::io(&part))?;
-        drop(out);
+        let sha1 = hex::encode(sha1::Digest::finalize(w.hash));
+        drop(w.inner);
         if written > max_total {
             let _ = std::fs::remove_file(&part);
             return Err(LauncherError::Extract(ExtractError::TooLarge(max_total)));
         }
         std::fs::rename(&part, &target).map_err(LauncherError::io(&target))?;
+        out.push((
+            Tracked {
+                path: rel.to_owned(),
+                sha1,
+                is_override: true,
+            },
+            target,
+        ));
     }
-    Ok(order.len())
+    Ok(out)
+}
+
+/// Copy the pack's overrides into `game_dir` (call off the async runtime).
+/// `client-overrides/` wins over `overrides/` for the same path. Returns
+/// the files written, with their SHA-1.
+pub fn extract_overrides(
+    archive: &Path,
+    game_dir: &Path,
+    max_total: u64,
+) -> Result<Vec<Tracked>, LauncherError> {
+    Ok(copy_overrides(archive, max_total, |rel| {
+        Ok(fsutil::safe_join(game_dir, rel)?)
+    })?
+    .into_iter()
+    .map(|(t, _)| t)
+    .collect())
+}
+
+/// What an import leaves in the instance: the pack's files, then its
+/// overrides (an override replaces a downloaded file at the same path).
+pub fn tracked_after_install(pack: &Pack, overrides: &[Tracked]) -> Vec<Tracked> {
+    let mut by_path: HashMap<String, Tracked> = HashMap::new();
+    for f in &pack.files {
+        by_path.insert(
+            f.path.to_ascii_lowercase(),
+            Tracked {
+                path: f.path.clone(),
+                sha1: f.sha1.to_ascii_lowercase(),
+                is_override: false,
+            },
+        );
+    }
+    for o in overrides {
+        by_path.insert(o.path.to_ascii_lowercase(), o.clone());
+    }
+    let mut v: Vec<Tracked> = by_path.into_values().collect();
+    v.sort_by(|a, b| a.path.cmp(&b.path));
+    v
 }
 
 #[cfg(test)]
@@ -268,7 +359,12 @@ mod tests {
             ("server-overrides/server.properties", b"x"),
         ]);
         let d = tempfile::tempdir().unwrap();
-        assert_eq!(extract_overrides(p.path(), d.path(), 1 << 20).unwrap(), 2);
+        assert_eq!(
+            extract_overrides(p.path(), d.path(), 1 << 20)
+                .unwrap()
+                .len(),
+            2
+        );
         assert_eq!(
             std::fs::read(d.path().join("options.txt")).unwrap(),
             b"client"

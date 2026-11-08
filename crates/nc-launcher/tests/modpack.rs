@@ -171,9 +171,10 @@ async fn real_modpack_install() {
     let n =
         modpack::extract_overrides(&archive, game.path(), modpack::MAX_OVERRIDES_BYTES).unwrap();
     println!(
-        "installed {}: {} files, {n} overrides",
+        "installed {}: {} files, {} overrides",
         pack.name,
-        pack.files.len()
+        pack.files.len(),
+        n.len()
     );
     for f in &pack.files {
         assert!(game.path().join(&f.path).is_file(), "{}", f.path);

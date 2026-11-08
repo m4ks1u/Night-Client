@@ -51,6 +51,8 @@ pub struct AppState {
     pub games: Mutex<HashMap<String, GameHandle>>,
     /// Previewed modpacks waiting to be imported, keyed by token.
     pub modpacks: Mutex<crate::commands::modpacks::Pending>,
+    /// Modpack updates in progress, keyed by instance id.
+    pub modpack_updates: Mutex<HashMap<String, CancellationToken>>,
 }
 
 pub struct GameHandle {
@@ -89,6 +91,7 @@ impl AppState {
             queue_wake: tokio::sync::Notify::new(),
             games: Mutex::new(HashMap::new()),
             modpacks: Mutex::new(HashMap::new()),
+            modpack_updates: Mutex::new(HashMap::new()),
         }
     }
 

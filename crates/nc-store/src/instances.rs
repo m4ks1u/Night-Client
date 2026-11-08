@@ -77,6 +77,8 @@ pub struct InstancePatch {
     pub jvm_args: Option<Vec<String>>,
     /// New loader version (same loader). Validated by the caller.
     pub loader_version: Option<String>,
+    /// New Minecraft version (a modpack update). Validated by the caller.
+    pub game_version: Option<String>,
     /// `Some(None)` returns to the default folder. Validated by the caller.
     pub game_dir: Option<Option<String>>,
 }
@@ -280,6 +282,18 @@ impl Store {
             )? == 0
             {
                 return Err(StoreError::Invalid("this instance has no loader".into()));
+            }
+        }
+        if let Some(gv) = patch.game_version {
+            if gv.is_empty() || gv.len() > 64 {
+                return Err(StoreError::Invalid("invalid game version".into()));
+            }
+            if conn.execute(
+                "UPDATE instances SET game_version = ?1 WHERE id = ?2",
+                params![gv, id],
+            )? == 0
+            {
+                return Err(StoreError::NotFound);
             }
         }
         if let Some(dir) = patch.game_dir {
