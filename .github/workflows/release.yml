@@ -1,0 +1,99 @@
+name: Release
+
+# Builds a signed installer and creates a DRAFT GitHub release. Nothing
+# reaches users until a maintainer publishes the draft and then runs the
+# "Publish update feed" workflow. See docs/releasing.md.
+#
+# Needs (repository settings, never in the repository):
+#   vars.UPDATE_PUBKEY                       updater public key (tauri signer generate)
+#   vars.MSA_CLIENT_ID                       approved Microsoft app (client) ID
+#   secrets.TAURI_SIGNING_PRIVATE_KEY        updater private key
+#   secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+# and an environment named "release" (add required reviewers there).
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and draft release
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: write
+    env:
+      NIGHT_CLIENT_UPDATE_PUBKEY: ${{ vars.UPDATE_PUBKEY }}
+      NIGHT_CLIENT_UPDATE_ENDPOINT: https://github.com/${{ github.repository }}/releases/download/update-feed/latest.json
+      NIGHT_CLIENT_MSA_CLIENT_ID: ${{ vars.MSA_CLIENT_ID }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check release settings
+        shell: pwsh
+        run: |
+          foreach ($n in "NIGHT_CLIENT_UPDATE_PUBKEY", "NIGHT_CLIENT_MSA_CLIENT_ID", "TAURI_SIGNING_PRIVATE_KEY") {
+            if (-not [Environment]::GetEnvironmentVariable($n)) { Write-Error "$n is not set"; exit 1 }
+          }
+          $version = (Get-Content apps/desktop/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          if ("v$version" -ne "${{ github.ref_name }}") { Write-Error "tag ${{ github.ref_name }} does not match version $version"; exit 1 }
+          "VERSION=$version" | Out-File -Append $env:GITHUB_ENV
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @night-client/desktop build
+      - run: cargo test --workspace --locked
+      - run: pnpm test
+      - name: Build signed installer
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          $conf = @{ bundle = @{ createUpdaterArtifacts = $true }; plugins = @{ updater = @{ pubkey = $env:NIGHT_CLIENT_UPDATE_PUBKEY } } } | ConvertTo-Json -Depth 5
+          [IO.File]::WriteAllText("$PWD/release.conf.json", $conf)  # UTF-8, no BOM
+          pnpm tauri build --config release.conf.json
+      - name: Prepare assets and update manifest
+        shell: pwsh
+        run: |
+          $dir = "target/release/bundle/nsis"
+          $setup = "NightClient_${env:VERSION}_x64-setup.exe"
+          New-Item -ItemType Directory -Force dist-release | Out-Null
+          Copy-Item "$dir/Night Client_${env:VERSION}_x64-setup.exe" "dist-release/$setup"
+          Copy-Item "$dir/Night Client_${env:VERSION}_x64-setup.exe.sig" "dist-release/$setup.sig"
+          $notesFile = "docs/release-notes/${env:VERSION}.md"
+          # ReadAllText gives plain strings; Get-Content adds PS properties that ConvertTo-Json would serialize.
+          $notes = if (Test-Path $notesFile) { [IO.File]::ReadAllText("$PWD/$notesFile") } else { "See CHANGELOG.md." }
+          $manifest = [ordered]@{
+            version = $env:VERSION
+            notes = $notes
+            pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = @{ "windows-x86_64" = @{
+              signature = [IO.File]::ReadAllText("$PWD/dist-release/$setup.sig").Trim()
+              url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$setup"
+            } }
+          }
+          [IO.File]::WriteAllText("$PWD/dist-release/latest.json", ($manifest | ConvertTo-Json -Depth 5))  # UTF-8, no BOM
+          [IO.File]::WriteAllText("$PWD/dist-release/SHA256SUMS.txt", (Get-FileHash "dist-release/$setup" -Algorithm SHA256).Hash.ToLower() + "  $setup`n")
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $notes = "docs/release-notes/${env:VERSION}.md"
+          $flags = @("--draft", "--title", "Night Client ${env:VERSION}", "--verify-tag")
+          if ($env:VERSION -match "-") { $flags += "--prerelease" }
+          if (Test-Path $notes) { $flags += @("--notes-file", $notes) } else { $flags += @("--notes", "See CHANGELOG.md.") }
+          gh release create "${{ github.ref_name }}" @flags (Get-ChildItem dist-release).FullName
