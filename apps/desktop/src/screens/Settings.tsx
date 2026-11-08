@@ -18,7 +18,7 @@ export function Settings() {
   const [error, setError] = useState<CmdError | null>(null);
   const [saved, setSaved] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const ids = { conc: useId(), hide: useId(), motion: useId(), gpu: useId() };
+  const ids = { conc: useId(), hide: useId(), motion: useId(), compact: useId(), gpu: useId() };
 
   // Follow changes made elsewhere (e.g. the welcome) unless an edit here is
   // still waiting to be saved, so a stale draft never overwrites them.
@@ -92,6 +92,13 @@ export function Settings() {
               onChange={(v) => update({ ...draft, reduceMotion: v })}
               label="Reduce motion"
               description="Night Client already follows Windows' animation setting. This turns animations off regardless."
+            />
+            <Toggle
+              id={ids.compact}
+              checked={draft.compactLayout}
+              onChange={(v) => update({ ...draft, compactLayout: v })}
+              label="Compact layout"
+              description="Less space between and inside controls, so more fits on screen. Text stays the same size."
             />
             <Toggle
               id={ids.gpu}

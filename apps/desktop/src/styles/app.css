@@ -109,6 +109,14 @@
 }
 
 /* In-app "Reduce motion" setting (in addition to the Windows setting below). */
+/* Compact layout: every Tailwind spacing utility (padding, gap, margin,
+   control heights) is a multiple of --spacing, so one value tightens the
+   whole UI. Text sizes are set separately and do not change. 0.22rem keeps
+   the smallest controls (h-8 → 28 px) above the 24 px WCAG 2.2 target size. */
+:root.density-compact {
+  --spacing: 0.22rem;
+}
+
 .reduce-motion *,
 .reduce-motion *::before,
 .reduce-motion *::after {

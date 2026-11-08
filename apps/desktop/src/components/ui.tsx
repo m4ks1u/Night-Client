@@ -123,10 +123,10 @@ export function Toggle({ id, checked, onChange, label, description, disabled }: 
         aria-checked={checked}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors duration-(--duration-fast) disabled:opacity-50 ${checked ? "bg-accent" : "bg-surface-3 border border-line-strong"}`}
+        className={`relative mt-0.5 h-[20px] w-[36px] shrink-0 rounded-full transition-colors duration-(--duration-fast) disabled:opacity-50 ${checked ? "bg-accent" : "bg-surface-3 border border-line-strong"}`}
       >
         <span
-          className={`absolute top-1/2 size-3.5 -translate-y-1/2 rounded-full bg-fg transition-[left] duration-(--duration-fast) ease-(--ease-out) ${checked ? "left-[18px]" : "left-[3px]"}`}
+          className={`absolute top-1/2 size-[14px] -translate-y-1/2 rounded-full bg-fg transition-[left] duration-(--duration-fast) ease-(--ease-out) ${checked ? "left-[18px]" : "left-[3px]"}`}
         />
       </button>
     </div>
