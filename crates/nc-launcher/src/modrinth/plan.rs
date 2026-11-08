@@ -72,6 +72,9 @@ pub struct Plan {
 }
 
 /// Prefer releases, then betas, then alphas; Modrinth returns newest first.
+/// When the newest pick is not built for the instance's own loader (a Fabric
+/// build on Quilt), a native build published the same day is preferred:
+/// mods that ship separate Fabric and Quilt files release them together.
 pub fn pick_best(mut versions: Vec<Version>, loader: &str, minecraft: &str) -> Option<Version> {
     versions.retain(|v| v.supports(loader, minecraft) && v.primary_file().is_some());
     let rank = |t: &str| match t {
@@ -80,7 +83,19 @@ pub fn pick_best(mut versions: Vec<Version>, loader: &str, minecraft: &str) -> O
         _ => 2,
     };
     let best = versions.iter().map(|v| rank(&v.version_type)).min()?;
-    versions.into_iter().find(|v| rank(&v.version_type) == best)
+    versions.retain(|v| rank(&v.version_type) == best);
+    let first = versions.first()?;
+    if first.loaders.iter().any(|l| l == loader) {
+        return versions.into_iter().next();
+    }
+    let day = first.date_published.get(..10).unwrap_or("").to_owned();
+    let native = versions.iter().position(|v| {
+        v.loaders.iter().any(|l| l == loader)
+            && !day.is_empty()
+            && v.date_published.get(..10) == Some(day.as_str())
+    });
+    let i = native.unwrap_or(0);
+    Some(versions.swap_remove(i))
 }
 
 const MAX_PLANNED: usize = 64;
@@ -358,6 +373,29 @@ mod tests {
             "fab"
         );
         assert!(pick_best(vec![quilt.clone()], "fabric", "1.21.1").is_none());
+
+        // Same-day native build wins on Quilt; an older one does not.
+        let mut fab_new = v("fab-new", "A", "release", &[]);
+        fab_new.date_published = "2026-11-02T10:00:00Z".into();
+        let mut qui_same = quilt.clone();
+        qui_same.id = "qui-same".into();
+        qui_same.date_published = "2026-11-02T09:00:00Z".into();
+        let mut qui_old = quilt.clone();
+        qui_old.id = "qui-old".into();
+        qui_old.date_published = "2026-10-01T09:00:00Z".into();
+        let ids = |vs: Vec<Version>, l: &str| pick_best(vs, l, "1.21.1").unwrap().id;
+        assert_eq!(
+            ids(
+                vec![fab_new.clone(), qui_same.clone(), qui_old.clone()],
+                "quilt"
+            ),
+            "qui-same"
+        );
+        assert_eq!(
+            ids(vec![fab_new.clone(), qui_old.clone()], "quilt"),
+            "fab-new"
+        );
+        assert_eq!(ids(vec![fab_new, qui_same], "fabric"), "fab-new");
         assert!(pick_best(vec![fabric, quilt], "neoforge", "1.21.1").is_none());
     }
 }
