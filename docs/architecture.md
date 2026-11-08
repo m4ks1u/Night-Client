@@ -115,9 +115,10 @@ The stored vector is validated again in `prepare_launch`. Memory is always set b
 
 ## Mod loaders
 
-**Install key** (`nc_core::loader::InstallKey`): `vanilla:<mc>`, `fabric:<mc>:<v>` or
-`neoforge:<mc>:<v>`. It is the download-queue target and maps to a **launch id**: `<mc>`,
-`fabric-loader-<v>-<mc>` or `neoforge-<v>`.
+**Install key** (`nc_core::loader::InstallKey`): `vanilla:<mc>`, `fabric:<mc>:<v>`,
+`quilt:<mc>:<v>`, `neoforge:<mc>:<v>` or `forge:<mc>:<v>` (the Forge version without its `<mc>-`
+prefix). It is the download-queue target and maps to a **launch id**: `<mc>`,
+`fabric-loader-<v>-<mc>`, `quilt-loader-<v>-<mc>`, `neoforge-<v>` or `<mc>-forge-<v>`.
 
 `nc_launcher::loaders::install` dispatches on the key. Each loader installs vanilla first, then writes
 `versions/<launch id>/` with the loader JSON (which `inheritsFrom` vanilla), a hard link of the vanilla
@@ -125,14 +126,15 @@ jar named `<launch id>.jar`, and finally `.installed`. At launch, `loaders::reso
 `inheritsFrom` chain from local files with `nc_core::profile::merge`: child scalars win, arguments are
 appended, and child libraries override parent libraries with the same `group:artifact[:classifier]`.
 
-- **Fabric** (`loaders/fabric.rs`): profile from Fabric Meta. Jars without a hash use the Maven
-  `.sha1` sidecar.
-- **NeoForge** (`loaders/neoforge.rs`): runs the installer's processors natively, using
-  `nc_core::installprofile` for the model and argument resolution. Installer libraries are resolved
+- **Fabric and Quilt** (`loaders/fabric.rs`, `Flavor`): profile from Fabric Meta v2 or Quilt Meta
+  v3, which share a format. Jars without a hash use the Maven `.sha1` sidecar. Quilt instances also
+  accept Fabric mods (`nc_core::loader::mod_loaders`).
+- **NeoForge and Forge** (`loaders/neoforge.rs`, `Dist`): runs the installer's processors natively,
+  using `nc_core::installprofile` for the model and argument resolution. Installer libraries are resolved
   with `libraries::resolve_all`, without de-duplication, because processors need different versions of
-  the same artifact. See [spikes/neoforge.md](spikes/neoforge.md).
-- **Forge and Quilt:** not implemented. Forge uses the same install-profile format as NeoForge, and
-  Quilt the same profile shape as Fabric.
+  the same artifact. Forge is offered from Minecraft 1.17, where its installer uses the same
+  `install_profile` spec 1; older Forge installers (spec 0) are not supported. See
+  [spikes/neoforge.md](spikes/neoforge.md).
 
 ## Modrinth
 

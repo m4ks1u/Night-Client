@@ -225,3 +225,26 @@ installer is 6.2 MB. Silent install takes about 1 s. This build has no update ch
 `night-client.exe` is 23.9 MB (22.8 MB at Stage 8). Runs 3–5 match Stage 8; the first two were slower
 by about 50 ms, the cold-start pattern seen in earlier stages. The registry scan for Java only runs when
 Java runtimes are listed, not at startup. Memory still meets the < 150 MB target.
+
+## Stage 10 re-run (2026-11-08, same PC, release build)
+
+| Run | UI ready | Private MB | Working set MB | Idle CPU |
+|---|---|---|---|---|
+| 1 | 259 ms | 118.2 | 330.6 | 0 % |
+| 2 | 257 ms | 116.6 | 330.7 | 0 % |
+| 3 | 258 ms | 117.3 | 330.9 | 0 % |
+| 4 | 264 ms | 118.1 | 334.4 | 0 % |
+| 5 | 261 ms | 117.9 | 330.7 | 0 % |
+
+`night-client.exe` is 24.0 MB; JS bundle 492 KB (151 KB gzip).
+
+### Installed-mods list (debug build, `e2e/mods-large.mjs`)
+
+| Mods | Before (all rows) | After (virtualized above 100) |
+|---|---|---|
+| 600 | 600 rows, shown in 377 ms, long tasks 131/55/72 ms | — |
+| 1500 | 1500 rows, shown in 614 ms, long tasks 250/137/229 ms | 16 rows, shown in 315 ms, no long tasks |
+| 60 | — | 60 rows (not virtualized), 194 ms, no long tasks |
+
+"—" means not measured. "Shown in" includes the IPC call that lists and hashes the folder. Debug builds run React in development
+mode, so release timings are lower.

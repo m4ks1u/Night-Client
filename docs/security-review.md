@@ -104,6 +104,9 @@ refusals in `e2e/relocate.mjs`, and by the raw-IPC refusal checks run in Stage 5
   program the user runs. Such a folder is treated like one on PATH: only local absolute paths are
   accepted, it must pass the same inspection, and it is only used when the user picks it or it is the
   best match. A runtime without a `release` file is asked for `java -version` during the scan.
+- **Forge** (Stage 10) runs Forge's installer processors with the same safeguards as NeoForge:
+  verified installer and libraries, Mojang mappings supplied by the launcher, output hashes checked.
+  Integrity is checked against `maven.minecraftforge.net` SHA-1 sidecars, not a publisher signature.
 - **Quilt** (Stage 9) libraries are checked against the Maven `.sha1` sidecars on `maven.quiltmc.org`
   and `maven.fabricmc.net`, as for Fabric: integrity in transit, not a publisher signature.
 - **Custom game folders may be on network shares.** That is data only, but mods placed there are run

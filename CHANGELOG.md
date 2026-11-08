@@ -6,6 +6,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 10 (Forge, large mod lists)
+- Forge instances for Minecraft 1.17 and newer, installed by running Forge's installer processors natively, as for NeoForge.
+- Long installed-mod lists (over 100 mods) render only the rows on screen.
+- End-to-end test `e2e/mods-large.mjs`; `e2e/mod-plans.mjs` also covers Forge.
+
+### Changed
+- On a Quilt instance, a Quilt build of a mod published the same day as its Fabric build is preferred.
+
 ### Added: Stage 9 (backlog)
 - Quilt instances (Quilt Meta profiles, Maven `.sha1` verification). Quilt instances also accept Fabric mods in Discover, install plans, updates and local imports.
 - Install plans list a mod's optional dependencies, unticked; a ticked one is installed with its own requirements.
