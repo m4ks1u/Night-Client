@@ -123,3 +123,22 @@ node e2e/a11y-audit.mjs ../../target/debug/night-client.exe
 Both scripts take an optional screenshot folder as a second argument. They use your real data folder,
 create a temporary instance and delete it again, and exit non-zero on any failed check. The smoke test
 needs vanilla 1.21.1 to be installed already, because it runs a verify job.
+
+The relocation test never touches your data: it points `APPDATA`/`LOCALAPPDATA` at a temporary folder,
+moves a small seeded data folder out and back, and checks the app restarts onto each one. At the end it
+stops every `night-client.exe` started from the given path.
+
+```bash
+node e2e/relocate.mjs ../../target/debug/night-client.exe
+```
+
+## 10. Dependency audits
+
+Install once with `cargo install cargo-deny --locked`, then:
+
+```bash
+cargo deny check advisories licenses bans sources
+```
+```bash
+pnpm audit
+```

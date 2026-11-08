@@ -26,14 +26,20 @@
 3. **Untrusted metadata.** Version JSON, loader profiles, runtime manifests and (later) mod metadata
    are treated as hostile: every path is validated, Maven coordinates are checked segment by segment,
    and download URLs must be HTTPS.
-4. **Secrets are typed.** Tokens live in `nc_core::Secret`, whose `Debug`/`Display` are redacted.
-   `LaunchCommand` keeps its secrets separately so it can always produce redacted arguments.
+4. **Secrets are typed.** Tokens live in `nc_core::Secret`, whose `Debug`/`Display` are redacted
+   and whose buffer is zeroed on drop. `LaunchCommand` keeps its secrets separately so it can always
+   produce redacted arguments, and zeroes its arguments (which carry the access token) on drop.
 5. **Throttle IPC.** Progress is sampled at 10 Hz and logs are batched every 100 ms, so heavy work never
    floods the WebView.
 
-## Data directory (`%APPDATA%\NightClient`)
+## Data directory
 
-| Path | Contents | Shared? |
+`%APPDATA%\NightClient` always holds the database (`night-client.db`) and, when the user moved the game
+data, `data-location.json` pointing at it. Logs and the token vault are machine-local in
+`%LOCALAPPDATA%\NightClient`. The game data below lives in `%APPDATA%\NightClient` by default, or
+wherever the user moved it (Settings → Storage).
+
+| Path (under the game-data root) | Contents | Shared? |
 |---|---|---|
 | `cache/` | version manifest (offline fallback) | — |
 | `versions/<id>/` | version JSON, client jar, `.installed` marker | across instances |
@@ -44,6 +50,16 @@
 
 A version counts as installed only when its `.installed` marker exists. The marker is written atomically
 after every file has verified.
+
+**Moving the game data** (`nc_launcher::relocate`, `commands::data::relocate_data`):
+- Refused while a game runs, downloads are queued, or a custom game folder lies inside a managed folder.
+  While a move runs, installs, launches and instance or mod changes are refused.
+- Each managed folder is renamed (same drive) or copied with size checks (another drive; links are
+  refused). Any failure renames back and deletes copies.
+- `data-location.json` is written before the old copies are deleted, then the app restarts. A crash at
+  any point leaves one complete copy that the saved location points to.
+- Targets must be local (Java runtimes are executed from here), empty or new, outside Windows folders
+  and not nested with the current folder. The default folder is always accepted.
 
 ## Download engine invariants
 
@@ -197,8 +213,20 @@ Rules:
 
 Screens for features that don't exist yet are not shown, so there are no placeholder controls.
 
+## Memory
+
+- The Rust process idles at about 11 MB; the rest is WebView2.
+- WebView2 renders in software unless Settings → Hardware acceleration is on (read once at startup,
+  `--disable-gpu`). This saves the GPU process's ~70 MB, and frame times for this UI were unchanged
+  in measurement (docs/benchmarks).
+- `memory.rs` sets WebView2's low memory-usage target while the window is minimized or hidden for a
+  game, and normal again when it is shown.
+
+## Security review
+
+See [security-review.md](security-review.md) for each requirement in the brief, how it is met, and
+where it is tested.
+
 ## Planned additions
 
-- DPAPI token vault in `src-tauri` (Stage 3).
-- Modrinth client and resolver (Stage 5).
 - Updater with signed artifacts (Stage 8).

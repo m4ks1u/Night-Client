@@ -6,6 +6,23 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added: Stage 7 (security, testing, optimization)
+- Move the game data folder from Settings → Storage (rename or copy, rolled back on any failure; the app restarts when done).
+- Updating mods installs dependencies the new versions require, and reports any that are missing.
+- Hardware acceleration setting (off by default).
+- Security review document mapping each requirement to its implementation and tests.
+- CI: `pnpm audit`, and a manual desktop end-to-end job.
+
+### Changed
+- Idle memory falls from about 183 MB to about 116 MB: WebView2 renders in software by default and uses less memory while minimized or hidden during a game.
+
+### Security
+- Tokens and launch arguments are zeroed in memory when dropped.
+- NeoForge installer extraction fails instead of truncating above its size limit.
+- Mod ids read from jar files are validated.
+- Custom Java on network or device paths is refused.
+- The WebView may only listen to events, not emit them.
+
 ### Added: Stage 6 (UI refinement)
 - Command palette (Ctrl+K) to go to any screen, or to open or play any instance.
 - Keyboard shortcuts (Ctrl+N, Ctrl+,, Ctrl+F, Alt+←), listed in Settings.
