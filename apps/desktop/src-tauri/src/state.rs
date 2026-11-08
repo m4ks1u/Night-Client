@@ -100,7 +100,7 @@ fn build_meta(layout: &Layout, s: &AppSettings) -> Meta {
     Meta::new(dl, layout.clone())
 }
 
-/// `%LOCALAPPDATA%NightClientault`: machine-local, never roamed.
+/// `%LOCALAPPDATA%\NightClient\vault`: machine-local, never roamed.
 fn vault_dir() -> PathBuf {
     std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
