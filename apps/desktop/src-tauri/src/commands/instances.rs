@@ -1,8 +1,11 @@
+use nc_core::loader::{InstallKey, LoaderKind};
+use nc_launcher::{CancellationToken, loaders::LoaderVersion};
 use nc_store::{Instance, InstancePatch, Loader, NewInstance};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
+use tauri_plugin_dialog::DialogExt;
 
-use super::{CmdError, Result, validate_instance_id, validate_version_id, with_db};
+use super::{CmdError, Result, invalid, validate_instance_id, validate_version_id, with_db};
 use crate::state::{AppState, lock};
 
 #[derive(Serialize)]
@@ -10,16 +13,52 @@ use crate::state::{AppState, lock};
 pub struct InstanceView {
     #[serde(flatten)]
     instance: Instance,
+    /// `vanilla:<mc>` / `fabric:<mc>:<v>` / `neoforge:<mc>:<v>`: the download-queue key.
+    install_key: Option<String>,
+    /// Human label, e.g. "Fabric 0.17.2 · 1.21.1".
+    label: String,
     installed: bool,
     running: bool,
 }
 
-fn view(state: &AppState, instance: Instance) -> InstanceView {
+fn to_kind(l: Loader) -> LoaderKind {
+    match l {
+        Loader::Vanilla => LoaderKind::Vanilla,
+        Loader::Fabric => LoaderKind::Fabric,
+        Loader::Neoforge => LoaderKind::NeoForge,
+    }
+}
+
+fn from_kind(k: LoaderKind) -> Loader {
+    match k {
+        LoaderKind::Vanilla => Loader::Vanilla,
+        LoaderKind::Fabric => Loader::Fabric,
+        LoaderKind::NeoForge => Loader::Neoforge,
+    }
+}
+
+/// The install key for an instance; `None` if its stored data is invalid.
+pub fn install_key(i: &Instance) -> Option<InstallKey> {
+    InstallKey::new(
+        to_kind(i.loader),
+        &i.game_version,
+        i.loader_version.as_deref(),
+    )
+    .ok()
+}
+
+pub(crate) fn view(state: &AppState, instance: Instance) -> InstanceView {
+    let key = install_key(&instance);
     InstanceView {
-        installed: state
-            .layout
-            .installed_marker(&instance.game_version)
-            .is_ok_and(|p| p.is_file()),
+        installed: key
+            .as_ref()
+            .and_then(|k| state.layout.installed_marker(&k.launch_id()).ok())
+            .is_some_and(|p| p.is_file()),
+        label: key
+            .as_ref()
+            .map(InstallKey::label)
+            .unwrap_or_else(|| instance.game_version.clone()),
+        install_key: key.map(|k| k.to_key()),
         running: lock(&state.games).contains_key(&instance.id),
         instance,
     }
@@ -38,12 +77,39 @@ pub async fn get_instance(state: State<'_, AppState>, id: String) -> Result<Inst
     Ok(view(&state, i))
 }
 
+/// Loader versions for a Minecraft version, newest first.
+#[tauri::command]
+pub async fn loader_versions(
+    state: State<'_, AppState>,
+    loader: LoaderKind,
+    minecraft: String,
+) -> Result<Vec<LoaderVersion>> {
+    validate_version_id(&minecraft)?;
+    Ok(
+        nc_launcher::loaders::versions(
+            &state.meta(),
+            loader,
+            &minecraft,
+            &CancellationToken::new(),
+        )
+        .await?,
+    )
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateInstance {
     name: String,
     game_version: String,
+    #[serde(default = "vanilla")]
+    loader: LoaderKind,
+    #[serde(default)]
+    loader_version: Option<String>,
     max_memory_mb: Option<u32>,
+}
+
+fn vanilla() -> LoaderKind {
+    LoaderKind::Vanilla
 }
 
 #[tauri::command]
@@ -52,12 +118,18 @@ pub async fn create_instance(
     input: CreateInstance,
 ) -> Result<InstanceView> {
     validate_version_id(&input.game_version)?;
+    let key = InstallKey::new(
+        input.loader,
+        &input.game_version,
+        input.loader_version.as_deref(),
+    )
+    .map_err(|_| invalid("choose a valid loader version"))?;
     let instances_dir = state.layout.instances_dir();
     let new = NewInstance {
         name: input.name,
-        game_version: input.game_version,
-        loader: Loader::Vanilla,
-        loader_version: None,
+        game_version: key.minecraft.clone(),
+        loader: from_kind(key.kind),
+        loader_version: key.loader_version.clone(),
         max_memory_mb: input.max_memory_mb,
     };
     let created = with_db(&state, move |db| {
@@ -65,7 +137,7 @@ pub async fn create_instance(
     })
     .await?;
     nc_launcher::instance::ensure_game_dir(&state.layout, &created.dir_name)?;
-    tracing::info!(id = %created.id, version = %created.game_version, "instance created");
+    tracing::info!(id = %created.id, key = %key.to_key(), "instance created");
     Ok(view(&state, created))
 }
 
@@ -95,11 +167,103 @@ pub async fn update_instance(
     let p = InstancePatch {
         name: patch.name,
         max_memory_mb: patch.max_memory_mb,
-        java_path: None,
-        jvm_args: None,
+        ..Default::default()
     };
     let i = with_db(&state, move |db| db.update_instance(&id, p)).await?;
     Ok(view(&state, i))
+}
+
+/// Change the loader version of a Fabric/NeoForge instance. The new
+/// version is installed on next play (or via Verify/Download).
+#[tauri::command]
+pub async fn set_instance_loader_version(
+    state: State<'_, AppState>,
+    id: String,
+    version: String,
+) -> Result<InstanceView> {
+    validate_instance_id(&id)?;
+    if lock(&state.games).contains_key(&id) {
+        return Err(CmdError::new(
+            "busy",
+            "stop the game before changing the loader",
+        ));
+    }
+    let lookup = id.clone();
+    let current = with_db(&state, move |db| db.get_instance(&lookup)).await?;
+    InstallKey::new(
+        to_kind(current.loader),
+        &current.game_version,
+        Some(&version),
+    )
+    .map_err(|_| invalid("invalid loader version"))?;
+    let p = InstancePatch {
+        loader_version: Some(version),
+        ..Default::default()
+    };
+    let i = with_db(&state, move |db| db.update_instance(&id, p)).await?;
+    Ok(view(&state, i))
+}
+
+/// Set (or clear with `null`) a custom game folder. Validated: absolute, not
+/// a system or Night Client-managed folder. Files are not moved.
+#[tauri::command]
+pub async fn set_instance_game_dir(
+    state: State<'_, AppState>,
+    id: String,
+    path: Option<String>,
+) -> Result<InstanceView> {
+    validate_instance_id(&id)?;
+    if lock(&state.games).contains_key(&id) {
+        return Err(CmdError::new(
+            "busy",
+            "stop the game before changing its folder",
+        ));
+    }
+    let stored = match path {
+        None => None,
+        Some(p) => {
+            if p.len() > 1024 {
+                return Err(invalid("path is too long"));
+            }
+            let layout = state.layout.clone();
+            let canon = tauri::async_runtime::spawn_blocking(move || {
+                nc_launcher::instance::validate_custom_game_dir(&layout, &p)
+            })
+            .await
+            .map_err(|e| CmdError::new("internal", e.to_string()))??;
+            Some(
+                canon
+                    .display()
+                    .to_string()
+                    .trim_start_matches(r"\\?\")
+                    .to_owned(),
+            )
+        }
+    };
+    let p = InstancePatch {
+        game_dir: Some(stored),
+        ..Default::default()
+    };
+    let i = with_db(&state, move |db| db.update_instance(&id, p)).await?;
+    tracing::info!(instance = %i.id, custom = i.game_dir.is_some(), "game folder changed");
+    Ok(view(&state, i))
+}
+
+/// Native folder picker (runs in Rust; the WebView gets no file-system access).
+#[tauri::command]
+pub async fn pick_folder(app: AppHandle) -> Result<Option<String>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose a game folder")
+        .pick_folder(move |p| {
+            let _ = tx.send(
+                p.and_then(|p| p.into_path().ok())
+                    .map(|p| p.display().to_string()),
+            );
+        });
+    rx.await
+        .map_err(|e| CmdError::new("internal", e.to_string()))
 }
 
 #[derive(Serialize)]
@@ -119,7 +283,9 @@ pub async fn delete_instance(state: State<'_, AppState>, id: String) -> Result<D
     }
     let gone = with_db(&state, move |db| db.delete_instance(&id)).await?;
     // Row first, then folder: if the move fails the files are still on disk
-    // and nothing references a missing folder.
+    // and nothing references a missing folder. A custom game folder belongs
+    // to the user and is never moved; only the default folder (which then
+    // holds just extracted natives) goes to trash.
     let trash = match nc_launcher::instance::move_to_trash(&state.layout, &gone.dir_name) {
         Ok(t) => t,
         Err(e) => {
@@ -127,7 +293,7 @@ pub async fn delete_instance(state: State<'_, AppState>, id: String) -> Result<D
             None
         }
     };
-    tracing::info!(id = %gone.id, trash = ?trash, "instance deleted");
+    tracing::info!(id = %gone.id, trash = ?trash, custom_dir_kept = gone.game_dir.is_some(), "instance deleted");
     Ok(Deleted {
         trash_path: trash.map(|p| p.display().to_string()),
     })
@@ -141,7 +307,10 @@ pub async fn open_instance_dir(
 ) -> Result<()> {
     validate_instance_id(&id)?;
     let i = with_db(&state, move |db| db.get_instance(&id)).await?;
-    let dir = nc_launcher::instance::ensure_game_dir(&state.layout, &i.dir_name)?;
+    let dir = match &i.game_dir {
+        Some(d) => std::path::PathBuf::from(d),
+        None => nc_launcher::instance::ensure_game_dir(&state.layout, &i.dir_name)?,
+    };
     super::app::open_dir(&app, &dir)
 }
 
@@ -155,7 +324,7 @@ pub async fn set_instance_jvm_args(
 ) -> Result<InstanceView> {
     validate_instance_id(&id)?;
     if args.len() > 8192 {
-        return Err(super::invalid("JVM arguments are too long"));
+        return Err(invalid("JVM arguments are too long"));
     }
     let parsed = nc_core::jvmargs::parse(&args)
         .map_err(|e| CmdError::new("invalid_jvm_args", e.to_string()))?;

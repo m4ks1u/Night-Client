@@ -2,16 +2,16 @@
 
 use std::sync::Arc;
 
-use nc_core::rules::Environment;
+use nc_core::{loader::InstallKey, rules::Environment};
 use nc_launcher::{
-    install::{self, InstallProgress},
+    install::InstallProgress,
     queue::{Enqueued, Job, JobKind, QueueSnapshot},
 };
 use nc_store::{DownloadRecord, DownloadStatus};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use super::{CmdError, Result, validate_version_id, with_db};
+use super::{CmdError, Result, invalid, with_db};
 use crate::state::{AppState, lock, now_unix};
 
 #[derive(Clone, Serialize)]
@@ -45,7 +45,10 @@ fn emit_queue(app: &AppHandle, state: &AppState) {
 /// version is already queued or running).
 #[tauri::command]
 pub fn install_version(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<u64> {
-    validate_version_id(&id)?;
+    // `id` is an install key: vanilla:<mc>, fabric:<mc>:<v> or neoforge:<mc>:<v>.
+    let id = InstallKey::parse(&id)
+        .map_err(|_| invalid("invalid install key"))?
+        .to_key();
     let job = match lock(&state.queue).enqueue(JobKind::Version, &id, now_unix()) {
         Enqueued::Added(j) | Enqueued::AlreadyQueued(j) => j,
     };
@@ -142,13 +145,31 @@ async fn run_job(app: &AppHandle, state: &AppState, job: &Job) -> JobOutcome {
             },
         );
     });
+    let key = match InstallKey::parse(&job.target) {
+        Ok(k) => k,
+        Err(e) => {
+            return (
+                FinishedEvent {
+                    job_id,
+                    id: job.target.clone(),
+                    status: DownloadStatus::Failed,
+                    code: Some("invalid_input"),
+                    error: Some(e.to_string()),
+                    repair: false,
+                    repaired_count: 0,
+                },
+                (0, 0, 0),
+                Vec::new(),
+            );
+        }
+    };
     let was_installed = state
         .layout
-        .installed_marker(&job.target)
+        .installed_marker(&key.launch_id())
         .is_ok_and(|p| p.is_file());
-    let r = install::install_vanilla(
+    let r = nc_launcher::loaders::install(
         &state.meta(),
-        &job.target,
+        &key,
         &Environment::windows_x64(),
         &job.cancel,
         on_progress,

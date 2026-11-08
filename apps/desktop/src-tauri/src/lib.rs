@@ -46,6 +46,10 @@ macro_rules! app_commands {
             commands::instances::delete_instance,
             commands::instances::open_instance_dir,
             commands::instances::set_instance_jvm_args,
+            commands::instances::loader_versions,
+            commands::instances::set_instance_loader_version,
+            commands::instances::set_instance_game_dir,
+            commands::instances::pick_folder,
             commands::account::account,
             commands::account::sign_in,
             commands::account::cancel_sign_in,
@@ -131,6 +135,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             app.manage(state::AppState::new(
                 Layout::new(Layout::default_root()),

@@ -69,7 +69,11 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
             return Err(CmdError::new("busy", "this instance is already running"));
         }
     }
-    if lock(&state.queue).is_busy_with(JobKind::Version, &instance.game_version) {
+    let key = super::instances::install_key(&instance).ok_or(CmdError::new(
+        "invalid_input",
+        "this instance has an invalid loader configuration",
+    ))?;
+    if lock(&state.queue).is_busy_with(JobKind::Version, &key.to_key()) {
         return Err(CmdError::new(
             "busy",
             "this version is still being installed",
@@ -79,7 +83,7 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
     let cmd = prepare_launch(
         &state.layout,
         LaunchRequest {
-            version_id: instance.game_version.clone(),
+            version_id: key.launch_id(),
             dir_name: instance.dir_name.clone(),
             auth,
             max_memory_mb: instance
@@ -87,6 +91,7 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
                 .unwrap_or(settings.default_max_memory_mb),
             extra_jvm_args: instance.jvm_args.clone(),
             java_override: instance.java_path.as_ref().map(std::path::PathBuf::from),
+            game_dir: instance.game_dir.as_ref().map(std::path::PathBuf::from),
         },
     )
     .await?;

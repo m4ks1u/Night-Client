@@ -141,7 +141,7 @@ pub async fn check_active_account(state: State<'_, AppState>) -> Result<Option<A
             code: "auth_required",
             ..
         }) => {}
-        Err(e) => tracing::warn!(code = e.code, "active account check failed"),
+        Err(e) => tracing::warn!(error_code = e.code, "active account check failed"),
     }
     account(state).await
 }
@@ -177,7 +177,7 @@ pub async fn sign_in(app: AppHandle, state: State<'_, AppState>) -> Result<Accou
         )
         .await;
     *lock(&state.sign_in) = None;
-    let session = r.inspect_err(|e| tracing::warn!(code = e.code(), "sign-in failed"))?;
+    let session = r.inspect_err(|e| tracing::warn!(error_code = e.code(), "sign-in failed"))?;
 
     accounts::persist(state.vault.as_ref(), &session)?;
     let (uuid, name) = (
