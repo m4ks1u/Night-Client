@@ -602,3 +602,73 @@ fn mods_crud_and_cascade_on_instance_delete() {
         "rows cascade with the instance"
     );
 }
+
+#[test]
+fn v5_database_upgrades_to_v6_keeping_instances_and_mods() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("nc.db");
+    let id = "11111111-2222-4333-8444-555555555555";
+    {
+        drop(Store::open_with_migrations(&path, &migrations::MIGRATIONS[..5]).unwrap());
+        let c = Connection::open(&path).unwrap();
+        // Every column set, as v5-era code wrote it.
+        c.execute(
+            r#"INSERT INTO instances (id, name, dir_name, game_version, loader, loader_version, max_memory_mb, java_path, jvm_args, created_at, last_played_at, play_time_seconds, game_dir)
+             VALUES (?1, 'Fabric five', 'Fabric five', '1.21.1', 'fabric', '0.17.2', 4096, 'C:\J\java.exe', '["-XX:+UseG1GC"]', 7, 9, 120, 'D:\Games\mc')"#,
+            [id],
+        )
+        .unwrap();
+        // v5 still refuses an unknown loader.
+        assert!(
+            c.execute(
+                "INSERT INTO instances (id, name, dir_name, game_version, loader, created_at) VALUES ('q', 'Q', 'Q', '1.21.1', 'quilt', 1)",
+                [],
+            )
+            .is_err()
+        );
+    }
+    {
+        let s = Store::open_with_migrations(&path, &migrations::MIGRATIONS[..5]).unwrap();
+        s.upsert_mod(&modrec(id, "sodium.jar")).unwrap();
+    }
+
+    let s = Store::open(&path).unwrap();
+    assert_eq!(s.schema_version().unwrap(), 6);
+    let i = s.get_instance(id).unwrap();
+    assert_eq!(
+        (
+            i.name.as_str(),
+            i.loader,
+            i.loader_version.as_deref(),
+            i.max_memory_mb,
+            i.java_path.as_deref(),
+            i.jvm_args.len(),
+            i.play_time_seconds,
+            i.game_dir.as_deref()
+        ),
+        (
+            "Fabric five",
+            Loader::Fabric,
+            Some("0.17.2"),
+            Some(4096),
+            Some(r"C:\J\java.exe"),
+            1,
+            120,
+            Some(r"D:\Games\mc")
+        )
+    );
+    assert_eq!(s.list_mods(id).unwrap().len(), 1, "mod rows survive");
+    assert!(dir.path().join("nc.db.v5.bak").is_file());
+
+    let mut q = new("Quilt");
+    q.loader = Loader::Quilt;
+    q.loader_version = Some("0.30.2".into());
+    let qi = s.create_instance(q, |_| false).unwrap();
+    assert_eq!(s.get_instance(&qi.id).unwrap().loader, Loader::Quilt);
+
+    s.delete_instance(id).unwrap();
+    assert!(
+        s.list_mods(id).unwrap().is_empty(),
+        "cascade still in place"
+    );
+}

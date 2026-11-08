@@ -82,11 +82,18 @@ export type MrVersion = {
   version_type: string;
   files: { filename: string; size: number; primary: boolean }[];
 };
-export type InstallPlan = {
-  install: { version: MrVersion; requiredBy: string | null }[];
+export type PlannedMod = { version: MrVersion; requiredBy: string | null };
+export type Plan = {
+  install: PlannedMod[];
   alreadyInstalled: string[];
   missing: string[];
   conflicts: string[];
+  /** Optional dependencies of the chosen mod (project ids). */
+  optional: string[];
+};
+export type InstallPlan = Plan & {
+  /** One plan per installable optional dependency: that mod first, then what it needs. */
+  options: Plan[];
   titles: Record<string, string>;
 };
 export type ModRecord = {

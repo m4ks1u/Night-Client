@@ -36,6 +36,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "instance_mods",
         sql: include_str!("../migrations/0005_instance_mods.sql"),
     },
+    Migration {
+        version: 6,
+        name: "instance_loader_any",
+        sql: include_str!("../migrations/0006_instance_loader_any.sql"),
+    },
 ];
 
 pub fn user_version(conn: &Connection) -> Result<u32> {

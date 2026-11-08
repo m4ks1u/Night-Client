@@ -163,6 +163,9 @@ pub async fn modrinth_categories(state: State<'_, AppState>) -> Result<Vec<Categ
 pub struct PlanView {
     #[serde(flatten)]
     plan: Plan,
+    /// One plan per optional dependency that has a compatible version: the
+    /// optional mod first, then what it requires beyond the main plan.
+    options: Vec<Plan>,
     /// Project titles for every id mentioned in the plan.
     titles: HashMap<String, String>,
 }
@@ -202,6 +205,26 @@ pub async fn mod_install_plan(
         .await
         .map_err(LauncherError::from)?;
 
+    // Optional dependencies: resolve each against what is installed or
+    // already planned, so a ticked option adds only what it needs.
+    let mut have = installed.clone();
+    have.extend(p.install.iter().map(|m| m.version.project_id.clone()));
+    let mut options = Vec::new();
+    for pid in &p.optional {
+        let Ok(vs) = mr
+            .project_versions(pid, loader, &inst.game_version, &c)
+            .await
+        else {
+            continue;
+        };
+        let Some(v) = pick_best(vs, loader, &inst.game_version) else {
+            continue;
+        };
+        if let Ok(sub) = plan::plan(mr, v, loader, &inst.game_version, &have, &c).await {
+            options.push(sub);
+        }
+    }
+
     let mut titles = HashMap::new();
     let ids: Vec<String> = p
         .install
@@ -210,13 +233,26 @@ pub async fn mod_install_plan(
         .chain(p.missing.iter().cloned())
         .chain(p.conflicts.iter().cloned())
         .chain(p.already_installed.iter().cloned())
+        .chain(options.iter().flat_map(|o| {
+            o.install
+                .iter()
+                .map(|m| m.version.project_id.clone())
+                .chain(o.missing.iter().cloned())
+                .chain(o.conflicts.iter().cloned())
+        }))
+        .collect::<HashSet<_>>()
+        .into_iter()
         .collect();
     for pid in ids {
         if let Ok(proj) = mr.project(&pid, &c).await {
             titles.insert(pid, proj.title);
         }
     }
-    Ok(PlanView { plan: p, titles })
+    Ok(PlanView {
+        plan: p,
+        options,
+        titles,
+    })
 }
 
 #[derive(Deserialize)]

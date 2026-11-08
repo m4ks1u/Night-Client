@@ -66,6 +66,9 @@ pub struct Plan {
     pub missing: Vec<String>,
     /// Installed (or planned) projects declared incompatible.
     pub conflicts: Vec<String>,
+    /// Optional dependencies of the chosen mod that are neither installed nor
+    /// planned, for the user to opt into. Not resolved or installed here.
+    pub optional: Vec<String>,
 }
 
 /// Prefer releases, then betas, then alphas; Modrinth returns newest first.
@@ -81,6 +84,8 @@ pub fn pick_best(mut versions: Vec<Version>, loader: &str, minecraft: &str) -> O
 }
 
 const MAX_PLANNED: usize = 64;
+/// Optional dependencies offered per install (each costs a lookup).
+pub const MAX_OPTIONAL: usize = 8;
 
 /// Plan installing `root` into an instance that already has `installed`
 /// projects (by project id).
@@ -97,6 +102,7 @@ pub async fn plan(
         already_installed: Vec::new(),
         missing: Vec::new(),
         conflicts: Vec::new(),
+        optional: Vec::new(),
     };
     let mut seen: HashSet<String> = HashSet::from([root.project_id.clone()]);
     let mut queue = vec![PlannedMod {
@@ -165,6 +171,19 @@ pub async fn plan(
     }
     // Chosen mod first, dependencies after, in discovery order.
     plan.install.sort_by_key(|p| p.required_by.is_some());
+    if let Some(root) = plan.install.first() {
+        for dep in &root.version.dependencies {
+            if dep.dependency_type == "optional"
+                && let Some(p) = &dep.project_id
+                && !installed.contains(p)
+                && !seen.contains(p)
+                && !plan.optional.contains(p)
+                && plan.optional.len() < MAX_OPTIONAL
+            {
+                plan.optional.push(p.clone());
+            }
+        }
+    }
     Ok(plan)
 }
 
@@ -271,6 +290,7 @@ mod tests {
             "A, B, C once each; optional D skipped: {ids:?}"
         );
         assert!(p.missing.is_empty() && p.conflicts.is_empty());
+        assert_eq!(p.optional, ["D"], "optional D offered, not installed");
     }
 
     #[tokio::test]

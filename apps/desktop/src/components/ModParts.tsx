@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Package } from "lucide-react";
 import { Button } from "./Button";
 import { Dialog, InlineError } from "./ui";
-import { api, toCmdError, type CmdError, type InstallPlan } from "../lib/ipc";
+import { api, toCmdError, type CmdError, type InstallPlan, type PlannedMod } from "../lib/ipc";
 import { formatBytes } from "../lib/format";
 
 /** Project icon from Modrinth's CDN (allowed by the CSP), lazy, with a fallback. */
@@ -33,9 +33,28 @@ export function ModIcon({ url, size = 40 }: { url: string | null; size?: number 
 }
 
 /**
+ * Everything to install: the main plan, then each chosen optional plan,
+ * each project once (an option's dependency may already be planned).
+ */
+export function itemsToInstall(plan: InstallPlan, chosen: ReadonlySet<string>): PlannedMod[] {
+  const out: PlannedMod[] = [];
+  const seen = new Set<string>();
+  const add = (m: PlannedMod) => {
+    if (seen.has(m.version.project_id)) return;
+    seen.add(m.version.project_id);
+    out.push(m);
+  };
+  plan.install.forEach(add);
+  for (const o of plan.options) {
+    if (o.install[0] && chosen.has(o.install[0].version.project_id)) o.install.forEach(add);
+  }
+  return out;
+}
+
+/**
  * Review-then-install dialog: shows the version, required dependencies,
- * already-satisfied ones, missing ones and declared conflicts before
- * anything is written.
+ * already-satisfied ones, missing ones, declared conflicts and optional
+ * extras (off by default) before anything is written.
  */
 export function InstallPlanDialog({ instanceId, projectId, title, onClose, onInstalled }: {
   instanceId: string;
@@ -48,18 +67,22 @@ export function InstallPlanDialog({ instanceId, projectId, title, onClose, onIns
   const [error, setError] = useState<CmdError | null>(null);
   const [busy, setBusy] = useState(false);
   const [ack, setAck] = useState(false);
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     setPlan(null);
     setError(null);
     setAck(false);
+    setChosen(new Set());
     if (!projectId) return;
     api.modInstallPlan(instanceId, projectId).then(setPlan).catch((e) => setError(toCmdError(e)));
   }, [instanceId, projectId]);
 
   const name = (id: string) => plan?.titles[id] ?? id;
-  const risky = !!plan && (plan.missing.length > 0 || plan.conflicts.length > 0);
-  const total = plan?.install.reduce((n, m) => n + (m.version.files.find((f) => f.primary) ?? m.version.files[0])!.size, 0) ?? 0;
+  const picked = plan ? plan.options.filter((o) => o.install[0] && chosen.has(o.install[0].version.project_id)) : [];
+  const risky = !!plan && [plan, ...picked].some((p) => p.missing.length > 0 || p.conflicts.length > 0);
+  const items = plan ? itemsToInstall(plan, chosen) : [];
+  const total = items.reduce((n, m) => n + (m.version.files.find((f) => f.primary) ?? m.version.files[0])!.size, 0);
 
   async function install() {
     if (!plan) return;
@@ -68,7 +91,7 @@ export function InstallPlanDialog({ instanceId, projectId, title, onClose, onIns
     try {
       await api.modInstall(
         instanceId,
-        plan.install.map((m) => ({ versionId: m.version.id, requiredBy: m.requiredBy })),
+        items.map((m) => ({ versionId: m.version.id, requiredBy: m.requiredBy })),
       );
       onInstalled();
       onClose();
@@ -90,7 +113,7 @@ export function InstallPlanDialog({ instanceId, projectId, title, onClose, onIns
             Cancel
           </Button>
           <Button variant={risky ? "danger" : "primary"} disabled={!plan || busy || (risky && !ack)} onClick={() => void install()} icon={busy ? <Loader2 size={14} className="animate-spin" /> : undefined}>
-            {busy ? "Installing…" : risky ? "Install anyway" : plan && plan.install.length > 1 ? `Install ${plan.install.length} mods` : "Install"}
+            {busy ? "Installing…" : risky ? "Install anyway" : items.length > 1 ? `Install ${items.length} mods` : "Install"}
           </Button>
         </>
       }
@@ -115,6 +138,45 @@ export function InstallPlanDialog({ instanceId, projectId, title, onClose, onIns
               </li>
             ))}
           </ul>
+          {plan.options.length > 0 && (
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="mb-1 text-xs font-medium text-fg">Optional extras</legend>
+              {plan.options.map((o) => {
+                const head = o.install[0]!;
+                const pid = head.version.project_id;
+                const extra = o.install.length - 1;
+                const notes = [
+                  extra > 0 ? `adds ${extra} required ${extra === 1 ? "mod" : "mods"}` : null,
+                  o.missing.length > 0 ? `needs ${o.missing.map(name).join(", ")}, which isn't available` : null,
+                  o.conflicts.length > 0 ? `declared incompatible with ${o.conflicts.map(name).join(", ")}` : null,
+                ].filter(Boolean);
+                return (
+                  <label key={pid} className="flex items-start gap-2 rounded-md border border-line px-3 py-2 text-xs">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 accent-accent"
+                      checked={chosen.has(pid)}
+                      onChange={(e) => {
+                        const next = new Set(chosen);
+                        if (e.target.checked) next.add(pid);
+                        else next.delete(pid);
+                        setChosen(next);
+                        setAck(false);
+                      }}
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] font-medium text-fg">{name(pid)}</span>
+                      <span className="block truncate">
+                        {head.version.version_number}
+                        {head.version.version_type !== "release" && <span className="ml-1 text-warning">({head.version.version_type})</span>}
+                        {notes.length > 0 && ` · ${notes.join(" · ")}`}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </fieldset>
+          )}
           <p className="text-xs">{formatBytes(total)} from cdn.modrinth.com, each file verified with SHA-512.</p>
           {plan.alreadyInstalled.length > 0 && (
             <p className="flex items-start gap-1.5 text-xs text-success">
