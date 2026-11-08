@@ -30,7 +30,7 @@ export type SystemInfo = {
   recommendedMemoryMb: number;
   maxMemoryMb: number;
 };
-export type Settings = { defaultMaxMemoryMb: number; downloadConcurrency: number; hideOnLaunch: boolean; reduceMotion: boolean; gpuAcceleration: boolean };
+export type Settings = { defaultMaxMemoryMb: number; downloadConcurrency: number; hideOnLaunch: boolean; reduceMotion: boolean; gpuAcceleration: boolean; checkUpdates: boolean };
 export type VersionItem = { id: string; kind: "release" | "snapshot" | string; releaseTime: string; installed: boolean };
 export type VersionList = { latestRelease: string; latestSnapshot: string; versions: VersionItem[]; fromCache: boolean };
 export type AccountStatus = "ready" | "signedIn" | "expired";
@@ -104,6 +104,12 @@ export type ModRecord = {
   installedAt: number;
 };
 export type ModUpdate = { fileName: string; current: string | null; versionId: string; versionNumber: string };
+export type UpdateInfo = {
+  /** False for builds without an update channel (development builds). */
+  configured: boolean;
+  currentVersion: string;
+  available: { version: string; notes: string; date: string | null } | null;
+};
 export type DataFolder = { path: string; defaultPath: string; isDefault: boolean; sizeBytes: number };
 export type UpdateSummary = { updated: number; addedDependencies: string[]; missingDependencies: string[] };
 export type Running = { instanceId: string; startedAt: number };
@@ -212,6 +218,9 @@ export const api = {
   dataFolderInfo: () => invoke<DataFolder>("data_folder_info"),
   /** Moves the game data (`null` = back to the default folder) and restarts the app on success. */
   relocateData: (target: string | null) => invoke<void>("relocate_data", { target }),
+  checkForUpdate: () => invoke<UpdateInfo>("check_for_update"),
+  /** Downloads, verifies and runs the installer; Night Client closes and restarts on success. */
+  installUpdate: () => invoke<void>("install_update"),
   updateInstance: (id: string, patch: { name?: string; maxMemoryMb?: number | null }) =>
     invoke<Instance>("update_instance", { id, patch }),
   deleteInstance: (id: string) => invoke<{ trashPath: string | null }>("delete_instance", { id }),
@@ -258,4 +267,6 @@ export const events = {
   gameLog: on<LogBatch>("game://log"),
   gameExit: on<GameExit>("game://exit"),
   relocateProgress: on<{ doneBytes: number; totalBytes: number }>("data://relocate-progress"),
+  updateAvailable: on<string>("update://available"),
+  updateProgress: on<{ doneBytes: number; totalBytes: number | null }>("update://progress"),
 };

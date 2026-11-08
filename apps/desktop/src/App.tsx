@@ -92,6 +92,9 @@ function subscribe() {
         toast({ tone: "error", title: `${name} closed with an error`, body: `Exit code ${e.code}.`, action: { label: "View game log", route: { name: "instance", id: e.instanceId, tab: "log" } } });
       }
     }),
+    events.updateAvailable((version) =>
+      toast({ tone: "info", title: `Night Client ${version} is available`, body: "Install it from Settings when you're ready.", action: { label: "Open Settings", route: { name: "settings" } } }),
+    ),
   ];
 }
 

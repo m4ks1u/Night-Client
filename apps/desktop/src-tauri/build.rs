@@ -37,6 +37,8 @@ const COMMANDS: &[&str] = &[
     "show_snap_layouts",
     "data_folder_info",
     "relocate_data",
+    "check_for_update",
+    "install_update",
     "mod_install_plan",
     "mod_install",
     "list_mods",
@@ -58,6 +60,9 @@ const COMMANDS: &[&str] = &[
 ];
 
 fn main() {
+    // The update channel is compiled in (commands/update.rs).
+    println!("cargo:rerun-if-env-changed=NIGHT_CLIENT_UPDATE_PUBKEY");
+    println!("cargo:rerun-if-env-changed=NIGHT_CLIENT_UPDATE_ENDPOINT");
     tauri_build::try_build(
         tauri_build::Attributes::new()
             .app_manifest(tauri_build::AppManifest::new().commands(COMMANDS)),
