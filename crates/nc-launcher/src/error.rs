@@ -39,6 +39,8 @@ pub enum LauncherError {
     InvalidPath(String),
     #[error("the NeoForge installer step {0} failed")]
     Processor(String),
+    #[error(transparent)]
+    Modrinth(#[from] crate::modrinth::ModrinthError),
     #[error("operation cancelled")]
     Cancelled,
     #[error("failed to start the game: {0}")]
@@ -67,6 +69,7 @@ impl LauncherError {
             Self::Vault(_) => "vault",
             Self::InvalidPath(_) => "invalid_path",
             Self::Processor(_) => "loader_processor",
+            Self::Modrinth(e) => e.code(),
             Self::JvmArgs(_) => "invalid_jvm_args",
         }
     }

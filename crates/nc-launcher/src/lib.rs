@@ -18,6 +18,7 @@ pub mod layout;
 pub mod loaders;
 pub mod logging;
 pub mod meta;
+pub mod modrinth;
 pub mod process;
 pub mod queue;
 pub mod sys;
